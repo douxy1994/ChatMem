@@ -45,9 +45,10 @@ use agentswap_opencode::OpenCodeAdapter;
 use agentswap_zcode::{
     ZCodeAdapter, ZCodeClaudeAdapter, ZCodeCodexAdapter, ZCodeGeminiAdapter, ZCodeOpenCodeAdapter,
 };
+use agentswap_hermes::adapter::HermesAdapter;
 
 const DEFAULT_TRASH_RETENTION_DAYS: i64 = 14;
-const AGENT_KEYS: &[&str] = &["claude", "codex", "gemini", "opencode", "zcode"];
+const AGENT_KEYS: &[&str] = &["claude", "codex", "gemini", "opencode", "zcode", "hermes"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ConversationSummaryResponse {
@@ -298,6 +299,7 @@ fn get_adapter(agent: &str) -> Result<Box<dyn AgentAdapter>, String> {
         "zcode-codex" => Ok(Box::new(ZCodeCodexAdapter::new())),
         "zcode-gemini" => Ok(Box::new(ZCodeGeminiAdapter::new())),
         "zcode-opencode" => Ok(Box::new(ZCodeOpenCodeAdapter::new())),
+        "hermes" => Ok(Box::new(HermesAdapter::new())),
         _ => Err(format!("Unknown agent: {}", agent)),
     }
 }
@@ -313,6 +315,7 @@ fn agent_key(agent: &AgentKind) -> &'static str {
         AgentKind::ZCodeCodex => "zcode-codex",
         AgentKind::ZCodeGemini => "zcode-gemini",
         AgentKind::ZCodeOpenCode => "zcode-opencode",
+        AgentKind::Hermes => "hermes",
     }
 }
 

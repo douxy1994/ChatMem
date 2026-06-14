@@ -169,7 +169,8 @@ type AgentType =
   | "codex"
   | "gemini"
   | "opencode"
-  | "zcode";
+  | "zcode"
+  | "hermes";
 type TopPage = "continue" | "review" | "history" | "help";
 type HistoryView = "conversations" | "recovery" | "transfers" | "outputs";
 type MemoryDrawerTab = "inbox" | "approved" | "wiki" | "continuation";
@@ -383,6 +384,7 @@ const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
   { value: "gemini", label: "Gemini" },
   { value: "opencode", label: "OpenCode" },
   { value: "zcode", label: "ZCode" },
+  { value: "hermes", label: "Hermes" },
 ];
 const ZCODE_CLI_LABELS: Record<string, string> = {
   claude: "Claude",
@@ -459,6 +461,8 @@ function getAgentHeading(agent: AgentType, locale: Locale) {
       return "OPENCODE \u5bf9\u8bdd";
     case "zcode":
       return "ZCODE \u5bf9\u8bdd";
+    case "hermes":
+      return "HERMES \u5bf9\u8bdd";
     default:
       return "对话";
   }
@@ -470,6 +474,7 @@ const AGENT_LABELS: Record<string, string> = {
   gemini: "Gemini",
   opencode: "OpenCode",
   zcode: "ZCode",
+  hermes: "Hermes",
   "zcode-claude": "ZCode Claude",
   "zcode-codex": "ZCode Codex",
   "zcode-gemini": "ZCode Gemini",
@@ -506,6 +511,8 @@ function getAgentConfigLocation(agent: AgentType) {
       return "$XDG_DATA_HOME/opencode or ~/.local/share/opencode";
     case "zcode":
       return "~/.zcode/v2/acp-config";
+    case "hermes":
+      return "~/.hermes";
     default:
       return "--";
   }

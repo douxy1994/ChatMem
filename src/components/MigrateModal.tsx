@@ -5,7 +5,8 @@ type AgentType =
   | "codex"
   | "gemini"
   | "opencode"
-  | "zcode";
+  | "zcode"
+  | "hermes";
 type MigrateMode = "copy" | "cut";
 
 interface MigrateModalProps {
