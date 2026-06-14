@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/tauri";
 import type { Locale } from "../i18n/types";
 
-export type SyncProvider = "off" | "webdav";
+export type SyncProvider = "off" | "webdav" | "onedrive";
 export type WebDavScheme = "https" | "http";
 export type DownloadMode = "on-sync" | "as-needed";
 export type AppFontFamily = "system" | "source-sans" | "source-serif" | "wenkai";
@@ -56,6 +56,7 @@ export type SyncSettings = {
   username: string;
   remotePath: string;
   downloadMode: DownloadMode;
+  syncFolder: string;
 };
 
 export type AppSettings = {
@@ -65,6 +66,8 @@ export type AppSettings = {
   autoCaptureMemory: boolean;
   trashRetentionDays: number;
   sync: SyncSettings;
+  autoBackupEnabled: boolean;
+  autoBackupIntervalMinutes: number;
 };
 
 export const SETTINGS_STORAGE_KEY = "chatmem.settings";
@@ -77,6 +80,7 @@ export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   username: "",
   remotePath: "chatmem",
   downloadMode: "on-sync",
+  syncFolder: "",
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -86,6 +90,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoCaptureMemory: true,
   trashRetentionDays: 14,
   sync: DEFAULT_SYNC_SETTINGS,
+  autoBackupEnabled: false,
+  autoBackupIntervalMinutes: 30,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -105,7 +111,7 @@ export function normalizeSyncSettings(value: unknown): SyncSettings {
   const parsedUrl = splitWebDavUrl(parsed.webdavUrl);
 
   return {
-    provider: parsed.provider === "webdav" ? "webdav" : "off",
+    provider: parsed.provider === "webdav" || parsed.provider === "onedrive" ? parsed.provider : "off",
     webdavScheme:
       parsed.webdavScheme === "http" || parsed.webdavScheme === "https"
         ? parsed.webdavScheme
@@ -117,6 +123,7 @@ export function normalizeSyncSettings(value: unknown): SyncSettings {
     username: typeof parsed.username === "string" ? parsed.username : "",
     remotePath: typeof parsed.remotePath === "string" && parsed.remotePath.trim() ? parsed.remotePath : "chatmem",
     downloadMode: parsed.downloadMode === "as-needed" ? "as-needed" : "on-sync",
+    syncFolder: typeof parsed.syncFolder === "string" ? parsed.syncFolder : "",
   };
 }
 
@@ -166,6 +173,11 @@ export function normalizeAppSettings(value: unknown): AppSettings {
     autoCaptureMemory: parsed.autoCaptureMemory !== false,
     trashRetentionDays: Math.min(365, Math.max(1, parsedRetention)),
     sync: normalizeSyncSettings(parsed.sync),
+    autoBackupEnabled: parsed.autoBackupEnabled === true,
+    autoBackupIntervalMinutes:
+      typeof parsed.autoBackupIntervalMinutes === "number" && parsed.autoBackupIntervalMinutes >= 5
+        ? parsed.autoBackupIntervalMinutes
+        : 30,
   };
 }
 

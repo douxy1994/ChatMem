@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "ChatMem",
-    "version": "1.1.2"
+    "version": "1.1.2.1"
   },
   "tauri": {
     "allowlist": {
@@ -16,6 +16,10 @@
         "all": true
       },
       "shell": {
+        "all": false,
+        "open": true
+      },
+      "dialog": {
         "all": false,
         "open": true
       }
@@ -57,8 +61,8 @@
         "height": 800,
         "minWidth": 900,
         "minHeight": 600,
-        "decorations": false,
-        "transparent": true
+        "decorations": true,
+        "transparent": false
       }
     ]
   }

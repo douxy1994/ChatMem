@@ -52,7 +52,7 @@ body,
 }
 
 body {
-  background: transparent;
+  background: var(--bg-app);
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 14px;
@@ -62,7 +62,7 @@ body {
 }
 
 #root {
-  background: transparent;
+  background: var(--bg-app);
 }
 
 button,
@@ -76,19 +76,17 @@ button {
 }
 
 .app-shell {
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
-  margin: 8px;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(22, 32, 24, 0.1);
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(195, 228, 184, 0.22), rgba(243, 246, 239, 0.76) 16%, var(--bg-app) 36%),
-    var(--bg-app);
-  box-shadow: var(--shadow-window);
+  border: none;
+  border-radius: 0;
+  background: var(--bg-app);
+  box-shadow: none;
   isolation: isolate;
 }
 
@@ -4147,6 +4145,52 @@ button {
 
 .settings-page .webdav-verify-row {
   padding-left: 120px;
+}
+
+.onedrive-settings-box {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.44);
+}
+
+.settings-page .onedrive-settings-box {
+  width: min(780px, 100%);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.onedrive-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.onedrive-user-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.onedrive-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-soft, #ccc);
+  flex-shrink: 0;
+}
+
+.onedrive-status-dot.is-connected {
+  background: var(--accent-green, #22c55e);
 }
 
 .settings-password-row {

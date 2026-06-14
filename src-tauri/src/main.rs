@@ -4,6 +4,7 @@
 )]
 
 mod agent_integration;
+mod local_sync;
 
 use std::{
     fs,
@@ -2196,6 +2197,54 @@ async fn auto_capture_conversation(
         .map_err(|e| e.to_string())
 }
 
+#[command]
+fn check_cloud_readiness(folder_path: String) -> local_sync::CloudSyncReadiness {
+    let path = std::path::PathBuf::from(&folder_path);
+    local_sync::check_cloud_readiness(&path, 10)
+}
+
+#[command]
+fn local_sync_status(folder_path: String) -> local_sync::SyncStatus {
+    let path = std::path::PathBuf::from(&folder_path);
+    local_sync::check_sync_status(&path)
+}
+
+#[command]
+fn sync_local_now(folder_path: String) -> Result<local_sync::SyncResult, String> {
+    let path = std::path::PathBuf::from(&folder_path);
+    if !path.exists() {
+        return Err(format!("Sync folder does not exist: {}", path.display()));
+    }
+
+    let mut items = Vec::new();
+    for agent_key in AGENT_KEYS {
+        let adapter = get_adapter(agent_key).map_err(|e| e.to_string())?;
+        if !adapter.is_available() {
+            continue;
+        }
+        let conversations = adapter.list_conversations().map_err(|e| e.to_string())?;
+        for summary in conversations {
+            match adapter.read_conversation(&summary.id) {
+                Ok(conversation) => {
+                    let body = serde_json::to_vec(&conversation)
+                        .map_err(|e| e.to_string())?;
+                    items.push(local_sync::SyncItem {
+                        agent: agent_key.to_string(),
+                        id: summary.id.clone(),
+                        updated_at: summary.updated_at.to_rfc3339(),
+                        file_name: format!("{}.json", summary.id),
+                        body,
+                    });
+                }
+                Err(e) => {
+                    eprintln!("Warning: failed to read {}: {e}", summary.id);
+                }
+            }
+        }
+    }
+    local_sync::bidirectional_sync(&items, &path).map_err(|e| e.to_string())
+}
+
 fn run_mcp_stdio() -> anyhow::Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(async {
@@ -2263,6 +2312,9 @@ fn main() {
             auto_capture_conversation,
             create_handoff_packet,
             mark_handoff_consumed,
+            local_sync_status,
+            check_cloud_readiness,
+            sync_local_now,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

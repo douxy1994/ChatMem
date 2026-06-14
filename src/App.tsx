@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { appWindow } from "@tauri-apps/api/window";
 import ConversationDetail from "./components/ConversationDetail";
@@ -7,6 +7,8 @@ import MigrateModal from "./components/MigrateModal";
 import SettingsPanel, {
   type AgentIntegrationOperationResult,
   type AgentIntegrationStatus,
+  type LocalSyncStatusResult,
+  type LocalSyncResult,
   type SettingsSyncCopy,
   type UpgradeReadinessReport,
   type WebDavSyncResult,
@@ -2235,6 +2237,76 @@ function App() {
   ): Promise<AgentIntegrationOperationResult[]> => {
     return invoke<AgentIntegrationOperationResult[]>("uninstall_agent_integration", { agent });
   };
+
+  const handleLocalSyncStatus = async (): Promise<LocalSyncStatusResult> => {
+    const folder = appSettings.sync.syncFolder;
+    if (!folder) return { available: false, folder_path: "", remote_conversation_count: 0, last_sync_info: null } as LocalSyncStatusResult;
+    return invoke<LocalSyncStatusResult>("local_sync_status", { folderPath: folder });
+  };
+
+  const handleSyncLocalNow = async (): Promise<LocalSyncResult> => {
+    const folder = appSettings.sync.syncFolder;
+    if (!folder) throw new Error("Please select a sync folder first");
+    return invoke<LocalSyncResult>("sync_local_now", { folderPath: folder });
+  };
+
+  // Auto-backup timer: periodically check cloud readiness and sync
+  const autoBackupRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoBackupRunningRef = useRef(false);
+
+  useEffect(() => {
+    // Clear existing timer
+    if (autoBackupRef.current) {
+      clearInterval(autoBackupRef.current);
+      autoBackupRef.current = null;
+    }
+
+    if (!appSettings.autoBackupEnabled || !appSettings.sync.syncFolder) {
+      return;
+    }
+
+    const intervalMs = appSettings.autoBackupIntervalMinutes * 60 * 1000;
+
+    const runAutoBackup = async () => {
+      if (autoBackupRunningRef.current) return;
+      autoBackupRunningRef.current = true;
+
+      try {
+        const folder = appSettings.sync.syncFolder;
+        if (!folder) return;
+
+        // Check if the cloud folder is quiet (not being synced)
+        const readiness = await invoke<{
+          folder_exists: boolean;
+          is_quiet: boolean;
+          has_lock_files: boolean;
+          recommended_action: string;
+        }>("check_cloud_readiness", { folderPath: folder });
+
+        if (readiness.recommended_action === "safe_to_sync") {
+          console.log("[AutoBackup] Cloud folder is quiet, starting sync...");
+          await invoke<LocalSyncResult>("sync_local_now", { folderPath: folder });
+          console.log("[AutoBackup] Sync completed");
+        } else {
+          console.log("[AutoBackup] Cloud folder is busy, skipping this cycle");
+        }
+      } catch (err) {
+        console.warn("[AutoBackup] Sync failed:", err);
+      } finally {
+        autoBackupRunningRef.current = false;
+      }
+    };
+
+    autoBackupRef.current = setInterval(runAutoBackup, intervalMs);
+    console.log(`[AutoBackup] Timer started, interval=${appSettings.autoBackupIntervalMinutes}min`);
+
+    return () => {
+      if (autoBackupRef.current) {
+        clearInterval(autoBackupRef.current);
+        autoBackupRef.current = null;
+      }
+    };
+  }, [appSettings.autoBackupEnabled, appSettings.autoBackupIntervalMinutes, appSettings.sync.syncFolder]);
 
   const handleApproveCandidate = async (
     candidate: MemoryCandidate,
@@ -4861,27 +4933,6 @@ function App() {
     );
   };
 
-  const handleTopbarMouseDown = (event: ReactMouseEvent<HTMLElement>) => {
-    if (event.button !== 0) {
-      return;
-    }
-
-    const target = event.target as HTMLElement | null;
-    if (target?.closest("button,input,select,textarea,a,[role='button']")) {
-      return;
-    }
-
-    event.preventDefault();
-    void appWindow.startDragging();
-  };
-
-  const handleToggleWindowSize = async () => {
-    await appWindow.toggleMaximize();
-    window.setTimeout(() => {
-      void syncNativeWindowState();
-    }, 0);
-  };
-
   const handleTrashRetentionDaysChange = (nextDays: number) => {
     const trashRetentionDays = Math.min(365, Math.max(1, Math.round(nextDays || 1)));
     const nextSettings = updateSettings({ trashRetentionDays });
@@ -4953,6 +5004,20 @@ function App() {
       onUninstallAgentIntegration={handleUninstallAgentIntegration}
       onLoadWebDavPassword={loadWebDavPassword}
       onSaveWebDavPassword={({ username, password }) => saveWebDavPassword(username, password)}
+      onLocalSyncStatus={handleLocalSyncStatus}
+      onSyncLocalNow={handleSyncLocalNow}
+      autoBackupEnabled={appSettings.autoBackupEnabled}
+      autoBackupIntervalMinutes={appSettings.autoBackupIntervalMinutes}
+      onAutoBackupEnabledChange={(enabled) => {
+        const next = { ...appSettings, autoBackupEnabled: enabled };
+        setAppSettings(next);
+        saveSettings(next);
+      }}
+      onAutoBackupIntervalChange={(minutes) => {
+        const next = { ...appSettings, autoBackupIntervalMinutes: minutes };
+        setAppSettings(next);
+        saveSettings(next);
+      }}
       onCheckUpdates={async () => {
         setUpdateState({ kind: "checking" });
         try {
@@ -4980,8 +5045,8 @@ function App() {
 
   return (
     <div className={`app-shell ${isWindowFilled ? "is-window-filled" : ""}`} style={appShellStyle}>
-      <header className="app-topbar" data-tauri-drag-region="true" onMouseDown={handleTopbarMouseDown}>
-        <div className="topbar-left" data-tauri-drag-region="true">
+      <header className="app-topbar" style={{ paddingLeft: 78 }}>
+        <div className="topbar-left">
           <img className="topbar-app-icon" src={brandIcon} alt="ChatMem icon" />
           <span className="topbar-version">ChatMem v{packageInfo.version}</span>
           <button
@@ -4996,34 +5061,7 @@ function App() {
           </button>
         </div>
 
-        <div className="topbar-drag-space" data-tauri-drag-region="true" />
-
-        <div className="window-controls">
-          <button
-            type="button"
-            className="window-control-button"
-            aria-label="Minimize window"
-            onClick={() => void appWindow.minimize()}
-          >
-            <WindowButtonIcon type="minimize" />
-          </button>
-          <button
-            type="button"
-            className="window-control-button"
-            aria-label="Toggle window size"
-            onClick={() => void handleToggleWindowSize()}
-          >
-            <WindowButtonIcon type="maximize" />
-          </button>
-          <button
-            type="button"
-            className="window-control-button is-close"
-            aria-label="Close window"
-            onClick={() => void appWindow.close()}
-          >
-            <WindowButtonIcon type="close" />
-          </button>
-        </div>
+        <div className="topbar-drag-space" />
       </header>
 
       <div
