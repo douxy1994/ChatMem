@@ -38,6 +38,10 @@
       "shortDescription": "Local-first memory for AI coding agents",
       "longDescription": "ChatMem indexes local Claude, Codex, Gemini, and OpenCode conversations, then turns them into searchable history, startup rules, wiki context, handoff packets, and cross-agent migration flows."
     },
+    "systemTray": {
+      "iconPath": "icons/icon.ico",
+      "iconAsTemplate": false
+    },
     "security": {
       "csp": null
     },

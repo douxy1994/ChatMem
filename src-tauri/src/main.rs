@@ -34,6 +34,7 @@ use chatmem::chatmem_memory::{
 use rmcp::{transport::stdio, ServiceExt};
 use serde::{Deserialize, Serialize};
 use tauri::command;
+use tauri::Manager;
 
 // Import AgentSwap adapters
 use agentswap_claude::ClaudeAdapter;
@@ -2323,7 +2324,52 @@ fn main() {
         return;
     }
 
+    // Build system tray menu
+    let tray_menu = tauri::SystemTrayMenu::new()
+        .add_item(tauri::CustomMenuItem::new("open".to_string(), "打开主界面").accelerator("Ctrl+Shift+M"))
+        .add_native_item(tauri::SystemTrayMenuItem::Separator)
+        .add_item(tauri::CustomMenuItem::new("sync".to_string(), "同步"))
+        .add_native_item(tauri::SystemTrayMenuItem::Separator)
+        .add_item(tauri::CustomMenuItem::new("quit".to_string(), "退出"));
+
+    let system_tray = tauri::SystemTray::new().with_menu(tray_menu);
+
     let app = tauri::Builder::default()
+        .system_tray(system_tray)
+        .on_system_tray_event(|app, event| {
+            match event {
+                tauri::SystemTrayEvent::MenuItemClick { id, .. } => {
+                    match id.as_str() {
+                        "open" => {
+                            if let Some(window) = app.get_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                                let _ = window.unminimize();
+                            }
+                        }
+                        "sync" => {
+                            if let Some(window) = app.get_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                                let _ = window.emit("tray-sync", ());
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                }
+                tauri::SystemTrayEvent::LeftClick { .. } => {
+                    if let Some(window) = app.get_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        let _ = window.unminimize();
+                    }
+                }
+                _ => {}
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             agent_integration::detect_agent_integrations,
             agent_integration::install_agent_integration,
@@ -2375,14 +2421,12 @@ fn main() {
             sync_local_now,
         ])
         .on_window_event(|event| {
-            // On macOS: clicking the red close button hides the window instead of quitting.
-            // The app stays in the dock. Right-click → Quit to actually exit.
+            // Close button hides window (minimizes to tray) instead of quitting.
+            // macOS: dock right-click → Quit to actually exit.
+            // Windows/Linux: tray menu → 退出 to actually exit.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
-                #[cfg(target_os = "macos")]
-                {
-                    event.window().hide().unwrap_or(());
-                    api.prevent_close();
-                }
+                event.window().hide().unwrap_or(());
+                api.prevent_close();
             }
         })
         .build(tauri::generate_context!())

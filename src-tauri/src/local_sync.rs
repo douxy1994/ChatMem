@@ -15,6 +15,41 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Encode a conversation ID into a safe filename.
+/// Windows forbids `:` (and several other chars) in filenames.
+/// We encode them as HTML entities: `:` → `&#x3a;` etc.
+fn id_to_filename(id: &str) -> String {
+    let mut out = String::with_capacity(id.len());
+    for ch in id.chars() {
+        match ch {
+            ':' => out.push_str("&#x3a;"),
+            '<' => out.push_str("&#x3c;"),
+            '>' => out.push_str("&#x3e;"),
+            '"' => out.push_str("&#x22;"),
+            '|' => out.push_str("&#x7c;"),
+            '?' => out.push_str("&#x3f;"),
+            '*' => out.push_str("&#x2a;"),
+            '/' => out.push_str("&#x2f;"),
+            '\\' => out.push_str("&#x5c;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Decode a safe filename back to the original conversation ID.
+fn filename_to_id(name: &str) -> String {
+    name.replace("&#x3a;", ":")
+        .replace("&#x3c;", "<")
+        .replace("&#x3e;", ">")
+        .replace("&#x22;", "\"")
+        .replace("&#x7c;", "|")
+        .replace("&#x3f;", "?")
+        .replace("&#x2a;", "*")
+        .replace("&#x2f;", "/")
+        .replace("&#x5c;", "\\")
+}
+
 /// A conversation's metadata for sync comparison.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConversationMeta {
@@ -140,15 +175,14 @@ fn read_remote_conversations(folder: &Path) -> HashMap<(String, String), (String
                 if file_name.is_empty() {
                     continue;
                 }
+                // Decode HTML entities back to original ID
+                let id = filename_to_id(&file_name);
 
                 match fs::read(&path) {
                     Ok(body) => {
                         // Extract updated_at from the JSON
                         let updated_at = extract_updated_at(&body);
-                        remote.insert(
-                            (agent.to_string(), file_name),
-                            (updated_at, body),
-                        );
+                        remote.insert((agent.to_string(), id), (updated_at, body));
                     }
                     Err(e) => {
                         eprintln!("Warning: failed to read remote {}: {e}", path.display());
@@ -235,7 +269,8 @@ pub fn bidirectional_sync(local_items: &[SyncItem], folder: &Path) -> Result<Syn
         match (local_entry, remote_entry) {
             // Only local → upload to sync folder
             (Some((local_ts, local_body)), None) => {
-                let file_path = conversations_dir.join(agent).join(format!("{id}.json"));
+                let safe_name = id_to_filename(id);
+                let file_path = conversations_dir.join(agent).join(format!("{safe_name}.json"));
                 fs::write(&file_path, local_body)?;
                 uploaded += 1;
                 println!("↑ Uploaded {agent}/{id} (local_ts={local_ts})");
@@ -259,8 +294,9 @@ pub fn bidirectional_sync(local_items: &[SyncItem], folder: &Path) -> Result<Syn
 
                 if local_epoch > remote_epoch {
                     // Local is newer → upload
+                    let safe_name = id_to_filename(id);
                     let file_path =
-                        conversations_dir.join(agent).join(format!("{id}.json"));
+                        conversations_dir.join(agent).join(format!("{safe_name}.json"));
                     fs::write(&file_path, local_body)?;
                     uploaded += 1;
                     conflicts += 1;
