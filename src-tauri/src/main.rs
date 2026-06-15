@@ -2272,8 +2272,7 @@ fn run_mcp_stdio() -> anyhow::Result<()> {
 #[cfg(target_os = "macos")]
 fn setup_macos_dock_handler(handle: tauri::AppHandle) {
     use cocoa::base::id;
-    use objc::declare::ClassDecl;
-    use objc::runtime::{Object, Sel};
+    use objc::runtime::{Class, Object, Sel};
     use objc::{class, msg_send, sel, sel_impl};
     use tauri::Manager;
 
@@ -2293,15 +2292,25 @@ fn setup_macos_dock_handler(handle: tauri::AppHandle) {
             true
         }
 
-        let mut decl = ClassDecl::new("ChatMemAppDelegate", class!(NSObject)).unwrap();
-        decl.add_method(
-            sel!(applicationShouldHandleReopen:hasVisibleWindows:),
-            handle_reopen as extern "C" fn(&Object, Sel, id, bool) -> bool,
-        );
-        let delegate_class = decl.register();
-        let delegate: id = msg_send![delegate_class, new];
+        // Add reopen handler to the EXISTING Tauri delegate using ObjC runtime
         let ns_app: id = msg_send![class!(NSApplication), sharedApplication];
-        let _: () = msg_send![ns_app, setDelegate: delegate];
+        let delegate: id = msg_send![ns_app, delegate];
+        let delegate_class: *const objc::runtime::Class = msg_send![delegate, class];
+        extern "C" {
+            fn class_addMethod(
+                cls: *const objc::runtime::Class,
+                name: Sel,
+                imp: *const std::ffi::c_void,
+                types: *const std::ffi::c_char,
+            ) -> bool;
+        }
+        let types = b"i@:@B ".as_ptr() as *const std::ffi::c_char;
+        class_addMethod(
+            delegate_class,
+            sel!(applicationShouldHandleReopen:hasVisibleWindows:),
+            handle_reopen as *const std::ffi::c_void,
+            types,
+        );
     }
 }
 
