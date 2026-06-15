@@ -69,6 +69,7 @@ export type AppSettings = {
   autoBackupEnabled: boolean;
   autoBackupIntervalMinutes: number;
   machineGroupNames: Record<string, string>;
+  machineGroupOverrides: Record<string, string>;
 };
 
 export const SETTINGS_STORAGE_KEY = "chatmem.settings";
@@ -94,6 +95,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoBackupEnabled: false,
   autoBackupIntervalMinutes: 30,
   machineGroupNames: {},
+  machineGroupOverrides: {},
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -183,6 +185,13 @@ export function normalizeAppSettings(value: unknown): AppSettings {
     machineGroupNames: isRecord(parsed.machineGroupNames)
       ? Object.fromEntries(
           Object.entries(parsed.machineGroupNames).filter(
+            ([key, value]) => typeof key === "string" && typeof value === "string",
+          ),
+        )
+      : {},
+    machineGroupOverrides: isRecord(parsed.machineGroupOverrides)
+      ? Object.fromEntries(
+          Object.entries(parsed.machineGroupOverrides).filter(
             ([key, value]) => typeof key === "string" && typeof value === "string",
           ),
         )

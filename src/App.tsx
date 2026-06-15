@@ -524,27 +524,16 @@ function getProjectLabel(projectDir: string) {
 
 function detectMachineId(projectDir: string): string {
   const normalized = projectDir.replace(/\\/g, "/");
-  const lower = normalized.toLowerCase();
-  // Windows: e.g. C:/Users/douxy
-  const winMatch = /^[a-zA-Z]:\/Users\/([^/]+)/i.exec(normalized);
-  if (winMatch) {
-    return `windows:${winMatch[1].toLowerCase()}`;
-  }
-  // macOS user home: /users/<username>
-  const macUserMatch = /^\/users\/([^/]+)/i.exec(normalized);
-  if (macUserMatch) {
-    return `macos:${macUserMatch[1].toLowerCase()}`;
-  }
-  // macOS volume: /volumes/<volumename> — extract the volume name
-  if (lower.startsWith("/volumes/")) {
-    const volumeMatch = /^\/volumes\/([^/]+)/i.exec(normalized);
-    if (volumeMatch) {
-      return `macos:${volumeMatch[1].toLowerCase()}`;
-    }
-  }
-  // Fallback: first path segment
-  const segments = normalized.split("/").filter(Boolean);
-  return `other:${(segments[0] || "unknown").toLowerCase()}`;
+  // Windows: C:/Users/xxx
+  if (/^[a-zA-Z]:\//.test(normalized)) return "windows";
+  // macOS: /Users/xxx, /Volumes/xxx, /Applications
+  if (/^\/(Users|Volumes|Applications)\//i.test(normalized) || normalized === "/Applications") return "macos";
+  // Linux
+  if (/^\/(home|root|usr|opt|tmp)\//.test(normalized)) return "linux";
+  // ChatMem internal paths
+  if (normalized.startsWith("chatmem://")) return "internal";
+  // Fallback
+  return "other";
 }
 
 function getWikiPreview(body: string) {
@@ -2827,7 +2816,7 @@ function App() {
     const groups = new Map<string, MachineGroup>();
 
     projectGroups.forEach((group) => {
-      const machineId = detectMachineId(group.fullPath);
+      const machineId = appSettings.machineGroupOverrides[group.fullPath] ?? detectMachineId(group.fullPath);
       const existing = groups.get(machineId);
       if (existing) {
         existing.projects.push(group);
@@ -2849,19 +2838,25 @@ function App() {
     const result = Array.from(groups.values());
 
     // Auto-generate labels for unnamed groups
+    const platformLabels: Record<string, string> = {
+      windows: "Windows",
+      macos: "Mac",
+      linux: "Linux",
+      internal: "Internal",
+      other: "Other",
+    };
     const platformCounts: Record<string, number> = {};
     result.forEach((g) => {
-      const platform = g.id.split(":")[0]; // "windows", "macos", "other"
-      platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+      platformCounts[g.id] = (platformCounts[g.id] || 0) + 1;
     });
     const platformSeen: Record<string, number> = {};
     result.forEach((g) => {
       if (!g.label) {
-        const [platform] = g.id.split(":");
+        const platform = g.id;
         const total = platformCounts[platform] || 1;
         const idx = (platformSeen[platform] = (platformSeen[platform] || 0));
         platformSeen[platform] = idx + 1;
-        const platformLabel = platform === "windows" ? "Windows" : platform === "macos" ? "macOS" : platform;
+        const platformLabel = platformLabels[platform] ?? platform;
         g.label = total > 1 ? `${platformLabel}-${idx + 1}` : platformLabel;
       }
     });
@@ -2869,7 +2864,7 @@ function App() {
     // Sort: most recent first
     result.sort((a, b) => b.latestAt.localeCompare(a.latestAt));
     return result;
-  }, [projectGroups, appSettings.machineGroupNames]);
+  }, [projectGroups, appSettings.machineGroupNames, appSettings.machineGroupOverrides]);
 
   const [expandedMachineGroups, setExpandedMachineGroups] = useState<Record<string, boolean>>({});
 
@@ -2905,6 +2900,85 @@ function App() {
 
   const cancelEditMachineGroup = useCallback(() => {
     setEditingMachineGroup(null);
+  }, []);
+
+  // --- Merge/Move machine groups ---
+  const [mgSelectMode, setMgSelectMode] = useState(false);
+  const [selectedMgIds, setSelectedMgIds] = useState<Set<string>>(new Set());
+  const [selectedConvKeysForMove, setSelectedConvKeysForMove] = useState<Set<string>>(new Set());
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
+  const [moveTargetId, setMoveTargetId] = useState<string | null>(null);
+
+  const toggleMgSelect = useCallback((mgId: string) => {
+    setSelectedMgIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(mgId)) next.delete(mgId);
+      else next.add(mgId);
+      return next;
+    });
+  }, []);
+
+  const handleMergeMachineGroups = useCallback(
+    (targetId: string) => {
+      const overrides = { ...appSettings.machineGroupOverrides };
+      machineGroups.forEach((mg) => {
+        if (selectedMgIds.has(mg.id) && mg.id !== targetId) {
+          mg.projects.forEach((pg) => {
+            pg.conversations.forEach((c) => {
+              // Override each conversation's project_dir to target machine
+              overrides[c.project_dir] = targetId;
+            });
+          });
+        }
+      });
+      const nextSettings = updateSettings({ machineGroupOverrides: overrides });
+      setAppSettings(nextSettings);
+      setSelectedMgIds(new Set());
+      setMergeTargetId(null);
+      setMgSelectMode(false);
+    },
+    [selectedMgIds, machineGroups, appSettings.machineGroupOverrides],
+  );
+
+  const handleMoveConversations = useCallback(
+    (targetId: string) => {
+      const overrides = { ...appSettings.machineGroupOverrides };
+      selectedConvKeysForMove.forEach((key) => {
+        // Find the conversation by key
+        for (const mg of machineGroups) {
+          for (const pg of mg.projects) {
+            for (const c of pg.conversations) {
+              if (getConversationKey(c) === key) {
+                overrides[c.project_dir] = targetId;
+              }
+            }
+          }
+        }
+      });
+      const nextSettings = updateSettings({ machineGroupOverrides: overrides });
+      setAppSettings(nextSettings);
+      setSelectedConvKeysForMove(new Set());
+      setMoveTargetId(null);
+      setMgSelectMode(false);
+    },
+    [selectedConvKeysForMove, machineGroups, appSettings.machineGroupOverrides],
+  );
+
+  const handleResetGroupOverrides = useCallback(() => {
+    const nextSettings = updateSettings({ machineGroupOverrides: {} });
+    setAppSettings(nextSettings);
+    setSelectedMgIds(new Set());
+    setSelectedConvKeysForMove(new Set());
+    setMgSelectMode(false);
+  }, []);
+
+  const toggleConvForMove = useCallback((key: string) => {
+    setSelectedConvKeysForMove((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }, []);
 
   const zcodeChatCliGroups = useMemo(() => {
@@ -3244,14 +3318,16 @@ function App() {
     const isSelected = selectedConversation?.id === conversation.id;
     const conversationKey = getConversationKey(conversation);
     const isBulkSelected = selectedConversationKeySet.has(conversationKey);
+    const isMoveSelected = selectedConvKeysForMove.has(conversationKey);
     const projectDisplay = getConversationProjectDisplay(conversation);
+    const inAnySelectMode = bulkSelectionMode || mgSelectMode;
 
     return (
       <div
         key={`${conversation.project_dir}-${conversation.id}`}
         className={`conversation-item ${isSelected ? "selected" : ""} ${
-          bulkSelectionMode ? "selection-mode" : ""
-        } ${isBulkSelected ? "is-bulk-selected" : ""} ${extraClassName}`.trim()}
+          inAnySelectMode ? "selection-mode" : ""
+        } ${isBulkSelected || isMoveSelected ? "is-bulk-selected" : ""} ${extraClassName}`.trim()}
       >
         {bulkSelectionMode ? (
           <label className="conversation-item-checkbox">
@@ -3263,6 +3339,16 @@ function App() {
             />
             <span aria-hidden="true"></span>
           </label>
+        ) : mgSelectMode ? (
+          <label className="conversation-item-checkbox">
+            <input
+              type="checkbox"
+              aria-label={`选择 ${title}`}
+              checked={isMoveSelected}
+              onChange={() => toggleConvForMove(conversationKey)}
+            />
+            <span aria-hidden="true"></span>
+          </label>
         ) : null}
         <button
           type="button"
@@ -3270,7 +3356,9 @@ function App() {
           onClick={() =>
             bulkSelectionMode
               ? handleToggleConversationSelection(conversation)
-              : void loadConversationDetail(conversation.id)
+              : mgSelectMode
+                ? toggleConvForMove(conversationKey)
+                : void loadConversationDetail(conversation.id)
           }
         >
           <div className="conversation-item-row">
@@ -3285,7 +3373,7 @@ function App() {
             <div className="conversation-item-time">{formatDistanceToNow(conversation.updated_at)}</div>
           </div>
         </button>
-        {!bulkSelectionMode ? (
+        {!inAnySelectMode ? (
           <button
             type="button"
             className="conversation-item-delete"
@@ -5276,6 +5364,28 @@ function App() {
                       {bulkSelectionMode ? shell.cancelBulkSelect : shell.bulkSelect}
                     </span>
                   </button>
+                  {machineGroups.length > 1 ? (
+                    <button
+                      type="button"
+                      className={`icon-button sidebar-action-button ${mgSelectMode ? "is-active" : ""}`}
+                      aria-label={mgSelectMode ? "取消管理分组" : "管理分组"}
+                      title={mgSelectMode ? "取消管理分组" : "管理分组"}
+                      onClick={() => {
+                        setMgSelectMode((cur) => !cur);
+                        if (mgSelectMode) {
+                          setSelectedMgIds(new Set());
+                          setSelectedConvKeysForMove(new Set());
+                          setMergeTargetId(null);
+                          setMoveTargetId(null);
+                        }
+                      }}
+                    >
+                      <WindowButtonIcon type="organize" />
+                      <span className="sidebar-action-tooltip" aria-hidden="true">
+                        {mgSelectMode ? "取消管理分组" : "管理分组"}
+                      </span>
+                    </button>
+                  ) : null}
                   {showOrganizeMenu && (
                     <div className="organize-menu">
                       <div className="organize-group">
@@ -5407,12 +5517,108 @@ function App() {
                 </div>
               ) : machineGroups.length > 1 ? (
                 <div className="machine-group-list">
+                  {mgSelectMode ? (
+                    <div className="mg-action-bar" style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--sidebar-bg, #1e1e2e)", padding: "6px 8px", borderBottom: "1px solid var(--border-color, #333)", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                      <span style={{ fontSize: "12px", opacity: 0.7 }}>
+                        已选 {selectedMgIds.size} 个分组, {selectedConvKeysForMove.size} 个对话
+                      </span>
+                      {selectedMgIds.size >= 2 ? (
+                        <div style={{ position: "relative", display: "inline-block" }}>
+                          <button
+                            type="button"
+                            className="bulk-selection-action"
+                            onClick={() => setMergeTargetId(mergeTargetId ? null : "__pick__")}
+                          >
+                            合并电脑
+                          </button>
+                          {mergeTargetId === "__pick__" ? (
+                            <div className="merge-move-dropdown" style={{ position: "absolute", top: "100%", left: 0, zIndex: 20, background: "var(--card-bg, #2a2a3a)", border: "1px solid var(--border-color, #444)", borderRadius: "6px", padding: "4px", minWidth: "120px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
+                              {machineGroups.filter(g => selectedMgIds.has(g.id)).map((g) => (
+                                <button
+                                  key={g.id}
+                                  type="button"
+                                  className="merge-move-dropdown-item"
+                                  style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", border: "none", background: "transparent", color: "inherit", cursor: "pointer", borderRadius: "4px", fontSize: "12px" }}
+                                  onClick={() => handleMergeMachineGroups(g.id)}
+                                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover-bg, #3a3a4a)")}
+                                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                >
+                                  → {g.label}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {selectedConvKeysForMove.size > 0 ? (
+                        <div style={{ position: "relative", display: "inline-block" }}>
+                          <button
+                            type="button"
+                            className="bulk-selection-action"
+                            onClick={() => setMoveTargetId(moveTargetId ? null : "__pick__")}
+                          >
+                            移动对话
+                          </button>
+                          {moveTargetId === "__pick__" ? (
+                            <div className="merge-move-dropdown" style={{ position: "absolute", top: "100%", left: 0, zIndex: 20, background: "var(--card-bg, #2a2a3a)", border: "1px solid var(--border-color, #444)", borderRadius: "6px", padding: "4px", minWidth: "120px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
+                              {machineGroups.map((g) => (
+                                <button
+                                  key={g.id}
+                                  type="button"
+                                  className="merge-move-dropdown-item"
+                                  style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", border: "none", background: "transparent", color: "inherit", cursor: "pointer", borderRadius: "4px", fontSize: "12px" }}
+                                  onClick={() => handleMoveConversations(g.id)}
+                                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover-bg, #3a3a4a)")}
+                                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                >
+                                  → {g.label}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="bulk-selection-action"
+                        onClick={() => {
+                          if (selectedMgIds.size === machineGroups.length) {
+                            setSelectedMgIds(new Set());
+                          } else {
+                            setSelectedMgIds(new Set(machineGroups.map((g) => g.id)));
+                          }
+                        }}
+                      >
+                        {selectedMgIds.size === machineGroups.length ? "取消选择" : "选择全部"}
+                      </button>
+                      <button
+                        type="button"
+                        className="bulk-selection-action"
+                        onClick={handleResetGroupOverrides}
+                        style={{ opacity: Object.keys(appSettings.machineGroupOverrides).length > 0 ? 1 : 0.4 }}
+                        disabled={Object.keys(appSettings.machineGroupOverrides).length === 0}
+                      >
+                        重置分组
+                      </button>
+                    </div>
+                  ) : null}
                   {machineGroups.map((mg) => {
                     const isExpanded = expandedMachineGroups[mg.id] ?? true;
                     const isEditing = editingMachineGroup === mg.id;
+                    const isMgChecked = selectedMgIds.has(mg.id);
                     return (
-                      <div key={mg.id} className="machine-group">
+                      <div key={mg.id} className={`machine-group ${isMgChecked ? "mg-selected" : ""}`}>
                         <div className="machine-group-header">
+                          {mgSelectMode ? (
+                            <label className="machine-group-checkbox" style={{ display: "flex", alignItems: "center", marginRight: "4px" }}>
+                              <input
+                                type="checkbox"
+                                checked={isMgChecked}
+                                onChange={() => toggleMgSelect(mg.id)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </label>
+                          ) : null}
                           <button
                             type="button"
                             className="machine-group-chevron-btn"
