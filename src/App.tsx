@@ -381,8 +381,6 @@ const COPY_RESET_DELAY_MS = 1800;
 const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
   { value: "claude", label: "Claude" },
   { value: "codex", label: "Codex" },
-  { value: "gemini", label: "Gemini" },
-  { value: "opencode", label: "OpenCode" },
   { value: "zcode", label: "ZCode" },
   { value: "hermes", label: "Hermes" },
 ];

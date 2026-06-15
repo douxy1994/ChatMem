@@ -48,7 +48,7 @@ use agentswap_zcode::{
 use agentswap_hermes::adapter::HermesAdapter;
 
 const DEFAULT_TRASH_RETENTION_DAYS: i64 = 14;
-const AGENT_KEYS: &[&str] = &["claude", "codex", "gemini", "opencode", "zcode", "hermes"];
+const AGENT_KEYS: &[&str] = &["claude", "codex", "zcode", "hermes"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ConversationSummaryResponse {
