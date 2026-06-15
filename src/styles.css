@@ -275,6 +275,7 @@ button {
 .sidebar-scroll {
   flex: 1;
   min-height: 0;
+  width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
@@ -669,6 +670,8 @@ button {
 .zcode-cli-group-list {
   display: grid;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .zcode-cli-group {
