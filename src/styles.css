@@ -242,7 +242,7 @@ button {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 308px 1fr;
+  grid-template-columns: 308px minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -303,8 +303,6 @@ button {
   border: 1px solid rgba(22, 32, 24, 0.06);
   border-radius: var(--radius-lg);
   background: rgba(246, 248, 243, 0.72);
-  min-width: 0;
-  overflow: hidden;
 }
 
 .agent-source-select {
@@ -673,8 +671,6 @@ button {
 .zcode-cli-group-list {
   display: grid;
   gap: 6px;
-  min-width: 0;
-  overflow: hidden;
 }
 
 .zcode-cli-group {
@@ -728,8 +724,6 @@ button {
   justify-content: space-between;
   gap: 10px;
   color: var(--text-primary);
-  min-width: 0;
-  overflow: hidden;
 }
 
 .project-group-header:hover {
@@ -790,8 +784,6 @@ button {
   padding: 0;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
-  min-width: 0;
-  overflow: hidden;
   transition:
     background var(--transition-base),
     border-color var(--transition-base),
