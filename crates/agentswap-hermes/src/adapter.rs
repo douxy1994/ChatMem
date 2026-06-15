@@ -91,7 +91,7 @@ impl AgentAdapter for HermesAdapter {
              FROM messages WHERE session_id = ?1 AND active = 1 ORDER BY timestamp ASC",
         )?;
 
-        let mut messages = Vec::new();
+        let mut messages: Vec<Message> = Vec::new();
 
         let rows: Vec<_> = stmt
             .query_map([id], |row| {
@@ -112,36 +112,41 @@ impl AgentAdapter for HermesAdapter {
                 "user" => Role::User,
                 "assistant" => Role::Assistant,
                 "system" => Role::System,
-                "tool" => continue, // tool results are embedded in tool_calls
+                "tool" => {
+                    // Tool result: attach output to the matching tool_call in the previous assistant message
+                    if let (Some(ref tn), Some(ref tc_content)) = (&tool_name, &content) {
+                        if let Some(last_msg) = messages.last_mut() {
+                            if last_msg.role == Role::Assistant {
+                                if let Some(tc) = last_msg.tool_calls.iter_mut().rev().find(|tc| tc.output.is_none() && tc.name == *tn) {
+                                    tc.output = Some(tc_content.clone());
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                },
                 _ => Role::Assistant,
             };
 
-            // Parse tool_calls JSON array
+            // Parse tool_calls JSON array (OpenAI format)
             let mut tool_calls = Vec::new();
             if let Some(ref tc_json) = tool_calls_json {
                 if let Ok(Value::Array(tc_array)) = serde_json::from_str::<Value>(tc_json) {
                     for tc in &tc_array {
-                        let name = tc.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
-                        let input = tc.get("input").cloned().unwrap_or(json!({}));
-                        let output = tc.get("output").and_then(|v| v.as_str()).map(|s| s.to_string());
-                        let status = match tc.get("status").and_then(|v| v.as_str()) {
-                            Some("error") => ToolStatus::Error,
-                            _ => ToolStatus::Success,
-                        };
-                        tool_calls.push(ToolCall { name, input, output, status });
+                        // OpenAI format: { "type": "function", "function": { "name": "...", "arguments": "..." } }
+                        let func = tc.get("function");
+                        let name = func
+                            .and_then(|f| f.get("name"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        let input = func
+                            .and_then(|f| f.get("arguments"))
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+                            .unwrap_or(json!({}));
+                        tool_calls.push(ToolCall { name, input, output: None, status: ToolStatus::Success });
                     }
-                }
-            }
-
-            // For tool-role messages with a tool_name, create synthetic tool_call
-            if tool_calls.is_empty() {
-                if let Some(ref tn) = tool_name {
-                    tool_calls.push(ToolCall {
-                        name: tn.clone(),
-                        input: json!({}),
-                        output: content.clone(),
-                        status: ToolStatus::Success,
-                    });
                 }
             }
 
