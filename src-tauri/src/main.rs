@@ -2319,8 +2319,23 @@ fn main() {
             check_cloud_readiness,
             sync_local_now,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .on_window_event(|event| {
+            // On macOS: clicking the red close button hides the window instead of quitting.
+            // The app stays in the dock. Right-click → Quit to actually exit.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
+                #[cfg(target_os = "macos")]
+                {
+                    event.window().hide().unwrap_or(());
+                    api.prevent_close();
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, _event| {
+            // macOS dock icon click to re-show is handled natively by the system
+            // when the window is hidden (not destroyed).
+        });
 }
 
 #[cfg(test)]
