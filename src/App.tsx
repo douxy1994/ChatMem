@@ -522,6 +522,31 @@ function getProjectLabel(projectDir: string) {
   return segments[segments.length - 1] || projectDir;
 }
 
+function detectMachineId(projectDir: string): string {
+  const normalized = projectDir.replace(/\\/g, "/");
+  const lower = normalized.toLowerCase();
+  // Windows: e.g. C:/Users/douxy
+  const winMatch = /^[a-zA-Z]:\/Users\/([^/]+)/i.exec(normalized);
+  if (winMatch) {
+    return `windows:${winMatch[1].toLowerCase()}`;
+  }
+  // macOS user home: /users/<username>
+  const macUserMatch = /^\/users\/([^/]+)/i.exec(normalized);
+  if (macUserMatch) {
+    return `macos:${macUserMatch[1].toLowerCase()}`;
+  }
+  // macOS volume: /volumes/<volumename> — extract the volume name
+  if (lower.startsWith("/volumes/")) {
+    const volumeMatch = /^\/volumes\/([^/]+)/i.exec(normalized);
+    if (volumeMatch) {
+      return `macos:${volumeMatch[1].toLowerCase()}`;
+    }
+  }
+  // Fallback: first path segment
+  const segments = normalized.split("/").filter(Boolean);
+  return `other:${(segments[0] || "unknown").toLowerCase()}`;
+}
+
 function getWikiPreview(body: string) {
   return body
     .replace(/^#\s+[^\n]+\n*/u, "")
@@ -2790,6 +2815,97 @@ function App() {
       return right.latestAt.localeCompare(left.latestAt);
     });
   }, [projectGroups]);
+
+  const machineGroups = useMemo(() => {
+    type MachineGroup = {
+      id: string;
+      label: string;
+      latestAt: string;
+      conversationCount: number;
+      projects: ProjectGroup[];
+    };
+    const groups = new Map<string, MachineGroup>();
+
+    projectGroups.forEach((group) => {
+      const machineId = detectMachineId(group.fullPath);
+      const existing = groups.get(machineId);
+      if (existing) {
+        existing.projects.push(group);
+        existing.conversationCount += group.conversations.length;
+        if (group.latestAt > existing.latestAt) {
+          existing.latestAt = group.latestAt;
+        }
+        return;
+      }
+      groups.set(machineId, {
+        id: machineId,
+        label: appSettings.machineGroupNames[machineId] ?? "",
+        latestAt: group.latestAt,
+        conversationCount: group.conversations.length,
+        projects: [group],
+      });
+    });
+
+    const result = Array.from(groups.values());
+
+    // Auto-generate labels for unnamed groups
+    const platformCounts: Record<string, number> = {};
+    result.forEach((g) => {
+      const platform = g.id.split(":")[0]; // "windows", "macos", "other"
+      platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+    });
+    const platformSeen: Record<string, number> = {};
+    result.forEach((g) => {
+      if (!g.label) {
+        const [platform] = g.id.split(":");
+        const total = platformCounts[platform] || 1;
+        const idx = (platformSeen[platform] = (platformSeen[platform] || 0));
+        platformSeen[platform] = idx + 1;
+        const platformLabel = platform === "windows" ? "Windows" : platform === "macos" ? "macOS" : platform;
+        g.label = total > 1 ? `${platformLabel}-${idx + 1}` : platformLabel;
+      }
+    });
+
+    // Sort: most recent first
+    result.sort((a, b) => b.latestAt.localeCompare(a.latestAt));
+    return result;
+  }, [projectGroups, appSettings.machineGroupNames]);
+
+  const [expandedMachineGroups, setExpandedMachineGroups] = useState<Record<string, boolean>>({});
+
+  const handleRenameMachineGroup = useCallback(
+    (machineId: string, newLabel: string) => {
+      const trimmed = newLabel.trim();
+      if (!trimmed) return;
+      const nextNames = { ...appSettings.machineGroupNames, [machineId]: trimmed };
+      const nextSettings = updateSettings({ machineGroupNames: nextNames });
+      setAppSettings(nextSettings);
+    },
+    [appSettings.machineGroupNames],
+  );
+
+  const [editingMachineGroup, setEditingMachineGroup] = useState<string | null>(null);
+  const [editingMachineGroupValue, setEditingMachineGroupValue] = useState("");
+  const machineGroupEditInputRef = useRef<HTMLInputElement | null>(null);
+
+  const startEditMachineGroup = useCallback(
+    (machineId: string, currentLabel: string) => {
+      setEditingMachineGroup(machineId);
+      setEditingMachineGroupValue(currentLabel);
+    },
+    [],
+  );
+
+  const commitEditMachineGroup = useCallback(() => {
+    if (editingMachineGroup && editingMachineGroupValue.trim()) {
+      handleRenameMachineGroup(editingMachineGroup, editingMachineGroupValue);
+    }
+    setEditingMachineGroup(null);
+  }, [editingMachineGroup, editingMachineGroupValue, handleRenameMachineGroup]);
+
+  const cancelEditMachineGroup = useCallback(() => {
+    setEditingMachineGroup(null);
+  }, []);
 
   const zcodeChatCliGroups = useMemo(() => {
     const groups = new Map<
@@ -5288,6 +5404,62 @@ function App() {
                       </div>
                     </div>
                   ))}
+                </div>
+              ) : machineGroups.length > 1 ? (
+                <div className="machine-group-list">
+                  {machineGroups.map((mg) => {
+                    const isExpanded = expandedMachineGroups[mg.id] ?? true;
+                    const isEditing = editingMachineGroup === mg.id;
+                    return (
+                      <div key={mg.id} className="machine-group">
+                        <div className="machine-group-header">
+                          <button
+                            type="button"
+                            className="machine-group-chevron-btn"
+                            onClick={() =>
+                              setExpandedMachineGroups((cur) => ({ ...cur, [mg.id]: !isExpanded }))
+                            }
+                          >
+                            <span className={`machine-group-chevron ${isExpanded ? "expanded" : ""}`}>
+                              <WindowButtonIcon type="chevron" />
+                            </span>
+                            {isEditing ? (
+                              <input
+                                ref={machineGroupEditInputRef}
+                                className="machine-group-rename-input"
+                                value={editingMachineGroupValue}
+                                onChange={(e) => setEditingMachineGroupValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") commitEditMachineGroup();
+                                  else if (e.key === "Escape") cancelEditMachineGroup();
+                                }}
+                                onBlur={commitEditMachineGroup}
+                                onClick={(e) => e.stopPropagation()}
+                                autoFocus
+                              />
+                            ) : (
+                              <span
+                                className="machine-group-label"
+                                title={mg.id}
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  startEditMachineGroup(mg.id, mg.label);
+                                }}
+                              >
+                                {mg.label}
+                              </span>
+                            )}
+                          </button>
+                          <span className="library-count-pill">{mg.conversationCount}</span>
+                        </div>
+                        {isExpanded ? (
+                          <div className="project-group-list machine-project-group-list">
+                            {mg.projects.map((group) => renderProjectGroup(group))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="project-group-list">

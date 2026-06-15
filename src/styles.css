@@ -700,6 +700,78 @@ button {
   padding-left: 6px;
 }
 
+.machine-group-list {
+  display: grid;
+  gap: 8px;
+}
+
+.machine-group {
+  display: grid;
+  gap: 8px;
+}
+
+.machine-group + .machine-group {
+  padding-top: 8px;
+  border-top: 1px solid rgba(22, 32, 24, 0.07);
+}
+
+.machine-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 4px 0 8px;
+}
+
+.machine-group-chevron-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.machine-group-label {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.machine-group-rename-input {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  background: var(--surface-2, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--accent, #4f8cff);
+  border-radius: 4px;
+  padding: 1px 4px;
+  width: 120px;
+  outline: none;
+}
+
+.machine-group-chevron {
+  display: inline-flex;
+  transition: transform 0.15s ease;
+}
+
+.machine-group-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.machine-project-group-list {
+  padding-left: 6px;
+}
+
 .project-group {
   display: grid;
   gap: 6px;

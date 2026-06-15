@@ -68,6 +68,7 @@ export type AppSettings = {
   sync: SyncSettings;
   autoBackupEnabled: boolean;
   autoBackupIntervalMinutes: number;
+  machineGroupNames: Record<string, string>;
 };
 
 export const SETTINGS_STORAGE_KEY = "chatmem.settings";
@@ -92,6 +93,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sync: DEFAULT_SYNC_SETTINGS,
   autoBackupEnabled: false,
   autoBackupIntervalMinutes: 30,
+  machineGroupNames: {},
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -178,6 +180,13 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       typeof parsed.autoBackupIntervalMinutes === "number" && parsed.autoBackupIntervalMinutes >= 5
         ? parsed.autoBackupIntervalMinutes
         : 30,
+    machineGroupNames: isRecord(parsed.machineGroupNames)
+      ? Object.fromEntries(
+          Object.entries(parsed.machineGroupNames).filter(
+            ([key, value]) => typeof key === "string" && typeof value === "string",
+          ),
+        )
+      : {},
   };
 }
 
