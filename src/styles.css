@@ -730,7 +730,7 @@ button {
 .project-group-title-wrap {
   min-width: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
 }
 
@@ -761,6 +761,10 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.project-group-title {
+  color: #1a6b3a;
 }
 
 .project-group-path,
