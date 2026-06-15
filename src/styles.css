@@ -782,20 +782,40 @@ button {
 
 .mg-action-bar {
   font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-soft-strong);
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.mg-action-bar .mg-action-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-right: 4px;
 }
 
 .mg-action-bar .bulk-selection-action {
   font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.06);
-  color: inherit;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   cursor: pointer;
+  transition: all var(--transition-base);
 }
 
 .mg-action-bar .bulk-selection-action:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--bg-selected);
+  border-color: var(--accent);
 }
 
 .mg-action-bar .bulk-selection-action:disabled {
@@ -803,8 +823,44 @@ button {
   cursor: default;
 }
 
+.mg-action-bar .bulk-selection-action.danger {
+  color: var(--danger);
+  border-color: var(--danger-soft);
+}
+
+.mg-action-bar .bulk-selection-action.danger:hover {
+  background: var(--danger-soft);
+}
+
+.merge-move-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: var(--shadow-float);
+}
+
+.merge-move-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  transition: background var(--transition-base);
+}
+
 .merge-move-dropdown-item:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-selected);
 }
 
 .machine-project-group-list {

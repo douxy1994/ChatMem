@@ -5518,8 +5518,8 @@ function App() {
               ) : machineGroups.length > 1 ? (
                 <div className="machine-group-list">
                   {mgSelectMode ? (
-                    <div className="mg-action-bar" style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--sidebar-bg, #1e1e2e)", padding: "6px 8px", borderBottom: "1px solid var(--border-color, #333)", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
-                      <span style={{ fontSize: "12px", opacity: 0.7 }}>
+                    <div className="mg-action-bar">
+                      <span className="mg-action-status">
                         已选 {selectedMgIds.size} 个分组, {selectedConvKeysForMove.size} 个对话
                       </span>
                       {selectedMgIds.size >= 2 ? (
@@ -5532,16 +5532,13 @@ function App() {
                             合并电脑
                           </button>
                           {mergeTargetId === "__pick__" ? (
-                            <div className="merge-move-dropdown" style={{ position: "absolute", top: "100%", left: 0, zIndex: 20, background: "var(--card-bg, #2a2a3a)", border: "1px solid var(--border-color, #444)", borderRadius: "6px", padding: "4px", minWidth: "120px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
+                            <div className="merge-move-dropdown">
                               {machineGroups.filter(g => selectedMgIds.has(g.id)).map((g) => (
                                 <button
                                   key={g.id}
                                   type="button"
                                   className="merge-move-dropdown-item"
-                                  style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", border: "none", background: "transparent", color: "inherit", cursor: "pointer", borderRadius: "4px", fontSize: "12px" }}
                                   onClick={() => handleMergeMachineGroups(g.id)}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover-bg, #3a3a4a)")}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                                 >
                                   → {g.label}
                                 </button>
@@ -5560,16 +5557,13 @@ function App() {
                             移动对话
                           </button>
                           {moveTargetId === "__pick__" ? (
-                            <div className="merge-move-dropdown" style={{ position: "absolute", top: "100%", left: 0, zIndex: 20, background: "var(--card-bg, #2a2a3a)", border: "1px solid var(--border-color, #444)", borderRadius: "6px", padding: "4px", minWidth: "120px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
+                            <div className="merge-move-dropdown">
                               {machineGroups.map((g) => (
                                 <button
                                   key={g.id}
                                   type="button"
                                   className="merge-move-dropdown-item"
-                                  style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", border: "none", background: "transparent", color: "inherit", cursor: "pointer", borderRadius: "4px", fontSize: "12px" }}
                                   onClick={() => handleMoveConversations(g.id)}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover-bg, #3a3a4a)")}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                                 >
                                   → {g.label}
                                 </button>
@@ -5593,9 +5587,8 @@ function App() {
                       </button>
                       <button
                         type="button"
-                        className="bulk-selection-action"
+                        className={`bulk-selection-action ${Object.keys(appSettings.machineGroupOverrides).length > 0 ? "" : "disabled"}`}
                         onClick={handleResetGroupOverrides}
-                        style={{ opacity: Object.keys(appSettings.machineGroupOverrides).length > 0 ? 1 : 0.4 }}
                         disabled={Object.keys(appSettings.machineGroupOverrides).length === 0}
                       >
                         重置分组
