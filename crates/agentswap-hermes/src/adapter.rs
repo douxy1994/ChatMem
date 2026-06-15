@@ -23,9 +23,23 @@ impl Default for HermesAdapter {
 
 impl HermesAdapter {
     pub fn new() -> Self {
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+        let base = dirs::data_local_dir()
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| PathBuf::from("/"));
+        // Windows: AppData/Local/hermes/state.db
+        // macOS/Linux: ~/.hermes/state.db  (data_local_dir returns ~/.local/share on Linux)
+        // Prefer AppData/Local/hermes if it exists, otherwise fall back to ~/.hermes
+        let appdata_path = base.join("hermes").join("state.db");
+        let home_path = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("/"))
+            .join(".hermes")
+            .join("state.db");
         Self {
-            db_path: home.join(".hermes").join("state.db"),
+            db_path: if appdata_path.exists() || !home_path.exists() {
+                appdata_path
+            } else {
+                home_path
+            },
         }
     }
 
@@ -224,6 +238,13 @@ impl AgentAdapter for HermesAdapter {
     }
 
     fn data_dir(&self) -> PathBuf {
+        let base = dirs::data_local_dir()
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| PathBuf::from("/"));
+        let appdata_dir = base.join("hermes");
+        if appdata_dir.exists() {
+            return appdata_dir;
+        }
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
         home.join(".hermes")
     }

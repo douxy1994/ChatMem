@@ -101,7 +101,16 @@ impl IntegrationAgent {
                 .join(".config")
                 .join("opencode")
                 .join("opencode.json"),
-            Self::Hermes => paths.home_dir.join(".hermes").join("config.yaml"),
+            Self::Hermes => {
+                let base = dirs::data_local_dir().unwrap_or_else(|| paths.home_dir.clone());
+                let appdata = base.join("hermes").join("config.yaml");
+                let home = paths.home_dir.join(".hermes").join("config.yaml");
+                if appdata.exists() || !home.exists() {
+                    appdata
+                } else {
+                    home
+                }
+            }
         }
     }
 
@@ -127,12 +136,16 @@ impl IntegrationAgent {
                 .join("skills")
                 .join("chatmem")
                 .join("SKILL.md"),
-            Self::Hermes => paths
-                .home_dir
-                .join(".hermes")
-                .join("skills")
-                .join("chatmem")
-                .join("SKILL.md"),
+            Self::Hermes => {
+                let base = dirs::data_local_dir().unwrap_or_else(|| paths.home_dir.clone());
+                let appdata = base.join("hermes").join("skills").join("chatmem").join("SKILL.md");
+                let home = paths.home_dir.join(".hermes").join("skills").join("chatmem").join("SKILL.md");
+                if appdata.exists() || !home.exists() {
+                    appdata
+                } else {
+                    home
+                }
+            }
         }
     }
 }
