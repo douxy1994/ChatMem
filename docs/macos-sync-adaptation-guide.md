@@ -283,3 +283,254 @@ async fn read_conversation(agent: String, id: String) -> Result<ConversationResp
 - 两个平台必须使用**完全相同**的 `id_to_filename` / `filename_to_id` 实现
 - 已有的原始冒号文件名（macOS 之前写入的）仍可正常读取，`filename_to_id` 不会改变不含编码的字符串
 - 首次同步后，macOS 端的旧冒号文件名会被新的 `&#x3a;` 编码文件名覆盖（时间戳更新的一方胜出）
+
+---
+
+## 5. 机器分组功能（`src/App.tsx` + `src/settings/storage.ts` + `src/styles.css`）
+
+**功能说明**：当用户有来自多台电脑的对话时（如一台 Windows + 一台 Mac），在项目列表上方自动显示机器分组层。单台电脑时不显示此层，不影响现有 UI。
+
+### 5a. 添加 `detectMachineId` 工具函数（`src/App.tsx`）
+
+在 `getProjectLabel` 函数附近添加：
+
+```typescript
+function detectMachineId(projectDir: string): string {
+  const normalized = projectDir.replace(/\\/g, "/");
+  // Windows: C:/Users/xxx or D:/xxx
+  const windowsMatch = normalized.match(/^([a-zA-Z]):\/(?:Users\/([^/]+))?/);
+  if (windowsMatch) {
+    const user = windowsMatch[2] || "default";
+    return `windows:${user.toLowerCase()}`;
+  }
+  // macOS: /Users/xxx or /Volumes/xxx
+  const macUsersMatch = normalized.match(/^\/Users\/([^/]+)/);
+  if (macUsersMatch) {
+    return `macos:${macUsersMatch[1].toLowerCase()}`;
+  }
+  const macVolumesMatch = normalized.match(/^\/Volumes\/([^/]+)/);
+  if (macVolumesMatch) {
+    return `macos:${macVolumesMatch[1].toLowerCase()}`;
+  }
+  // Other
+  const segments = normalized.split("/").filter(Boolean);
+  return `other:${(segments[0] || "unknown").toLowerCase()}`;
+}
+```
+
+### 5b. 设置中添加 `machineGroupNames`（`src/settings/storage.ts`）
+
+在 `AppSettings` 类型中添加：
+
+```typescript
+machineGroupNames: Record<string, string>;
+```
+
+默认值：`machineGroupNames: {}`
+
+在 `normalizeAppSettings` 中添加：
+
+```typescript
+machineGroupNames:
+  typeof parsed.machineGroupNames === "object" && parsed.machineGroupNames !== null
+    ? (parsed.machineGroupNames as Record<string, string>)
+    : {},
+```
+
+### 5c. 添加 `machineGroups` memo 和渲染逻辑（`src/App.tsx`）
+
+在 `zcodeProjectCliGroups` 之后添加：
+
+```typescript
+const [expandedMachineGroups, setExpandedMachineGroups] = useState<Record<string, boolean>>({});
+const [renamingMachineGroup, setRenamingMachineGroup] = useState<string | null>(null);
+const [machineGroupRenameValue, setMachineGroupRenameValue] = useState("");
+
+const machineGroups = useMemo(() => {
+  const groups = new Map<string, {
+    id: string;
+    autoLabel: string;
+    projects: ProjectGroup[];
+    conversationCount: number;
+    latestAt: string;
+  }>();
+
+  projectGroups.forEach((pg) => {
+    const machineId = detectMachineId(pg.fullPath);
+    const existing = groups.get(machineId);
+    if (existing) {
+      existing.projects.push(pg);
+      existing.conversationCount += pg.conversations.length;
+      if (pg.latestAt > existing.latestAt) existing.latestAt = pg.latestAt;
+    } else {
+      groups.set(machineId, {
+        id: machineId,
+        autoLabel: machineId, // Will be refined below
+        projects: [pg],
+        conversationCount: pg.conversations.length,
+        latestAt: pg.latestAt,
+      });
+    }
+  });
+
+  // Refine auto-labels
+  const platformCounts = new Map<string, number>();
+  groups.forEach((g) => {
+    const platform = g.id.split(":")[0];
+    platformCounts.set(platform, (platformCounts.get(platform) || 0) + 1);
+  });
+
+  const platformIndices = new Map<string, number>();
+  groups.forEach((g) => {
+    const [platform, user] = g.id.split(":");
+    const count = platformCounts.get(platform) || 1;
+    if (count === 1) {
+      g.autoLabel = platform === "windows" ? "Windows" : platform === "macos" ? "Mac" : platform;
+    } else {
+      const idx = (platformIndices.get(platform) || 0) + 1;
+      platformIndices.set(platform, idx);
+      g.autoLabel = `${platform === "windows" ? "Windows" : platform === "macos" ? "Mac" : platform}-${idx}`;
+    }
+  });
+
+  return Array.from(groups.values()).sort((a, b) => b.latestAt.localeCompare(a.latestAt));
+}, [projectGroups]);
+
+const getMachineGroupLabel = (groupId: string) => {
+  return appSettings.machineGroupNames[groupId] ||
+    machineGroups.find((g) => g.id === groupId)?.autoLabel ||
+    groupId;
+};
+```
+
+### 5d. 渲染机器分组（`src/App.tsx`）
+
+在渲染项目列表的地方，用机器分组包裹（仅当 `machineGroups.length > 1` 时）：
+
+```tsx
+{machineGroups.length > 1 ? (
+  <div className="machine-group-list">
+    {machineGroups.map((mg) => {
+      const isExpanded = expandedMachineGroups[mg.id] !== false;
+      const label = getMachineGroupLabel(mg.id);
+      return (
+        <div key={mg.id} className="machine-group">
+          <div
+            className="machine-group-header"
+            onClick={() =>
+              setExpandedMachineGroups((prev) => ({ ...prev, [mg.id]: !isExpanded }))
+            }
+          >
+            <button className="machine-group-chevron-btn">
+              <span className={`machine-group-chevron ${isExpanded ? "expanded" : ""}`}>▶</span>
+            </button>
+            {renamingMachineGroup === mg.id ? (
+              <input
+                className="machine-group-rename-input"
+                value={machineGroupRenameValue}
+                onChange={(e) => setMachineGroupRenameValue(e.target.value)}
+                onBlur={() => {
+                  const trimmed = machineGroupRenameValue.trim();
+                  if (trimmed) {
+                    saveSettings({
+                      ...appSettings,
+                      machineGroupNames: { ...appSettings.machineGroupNames, [mg.id]: trimmed },
+                    });
+                  }
+                  setRenamingMachineGroup(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") setRenamingMachineGroup(null);
+                }}
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <span
+                className="machine-group-label"
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setRenamingMachineGroup(mg.id);
+                  setMachineGroupRenameValue(label);
+                }}
+              >
+                {label}
+              </span>
+            )}
+            <span className="machine-group-count-pill">{mg.conversationCount}</span>
+          </div>
+          {isExpanded && (
+            <div className="machine-project-group-list">
+              {mg.projects.map((group) => renderProjectGroup(group))}
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+) : (
+  <div className="project-group-list">
+    {projectGroups.map((group) => renderProjectGroup(group))}
+  </div>
+)}
+```
+
+### 5e. CSS 样式（`src/styles.css`）
+
+```css
+.machine-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.machine-group { }
+.machine-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary, #1a1a1a);
+  background: var(--bg-secondary, #f5f5f5);
+}
+.machine-group-header:hover {
+  background: var(--bg-hover, #eaeaea);
+}
+.machine-group-chevron-btn {
+  background: none; border: none; padding: 0; cursor: pointer;
+  display: flex; align-items: center;
+}
+.machine-group-chevron {
+  font-size: 10px; transition: transform 0.15s;
+  color: var(--text-secondary, #888);
+}
+.machine-group-chevron.expanded { transform: rotate(90deg); }
+.machine-group-label { flex: 1; }
+.machine-group-rename-input {
+  flex: 1; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--accent, #4caf50); border-radius: 4px;
+  padding: 2px 6px; outline: none;
+}
+.machine-group-count-pill {
+  font-size: 11px; font-weight: 500; padding: 1px 7px;
+  border-radius: 10px; background: var(--bg-tertiary, #e0e0e0);
+  color: var(--text-secondary, #666);
+}
+.machine-project-group-list {
+  display: flex; flex-direction: column; gap: 2px;
+  padding-left: 16px;
+}
+```
+
+### 验证
+
+1. 安装修改后的 macOS 版本
+2. 确保有来自 Windows 和 Mac 的对话（通过 OneDrive 同步）
+3. 切换到任意来源，检查是否出现机器分组
+4. 双击分组名称可以重命名
+5. 单台电脑时不应出现分组层
