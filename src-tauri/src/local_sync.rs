@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 /// Encode a conversation ID into a safe filename.
 /// Windows forbids `:` (and several other chars) in filenames.
 /// We encode them as HTML entities: `:` → `&#x3a;` etc.
-fn id_to_filename(id: &str) -> String {
+pub fn id_to_filename(id: &str) -> String {
     let mut out = String::with_capacity(id.len());
     for ch in id.chars() {
         match ch {

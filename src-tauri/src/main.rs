@@ -1709,8 +1709,38 @@ async fn search_conversations(
 #[command]
 async fn read_conversation(agent: String, id: String) -> Result<ConversationResponse, String> {
     let adapter = get_adapter(&agent)?;
-    let mut conversation = adapter.read_conversation(&id).map_err(|e| e.to_string())?;
-    conversation.project_dir = normalize_project_dir(&conversation.project_dir);
+
+    // Try adapter first (local native storage)
+    let conversation = match adapter.read_conversation(&id) {
+        Ok(mut conv) => {
+            conv.project_dir = normalize_project_dir(&conv.project_dir);
+            conv
+        }
+        Err(_) => {
+            // Adapter doesn't have it — try reading from the sync folder
+            let settings = read_app_settings_from_disk()?;
+            let sync_folder = settings
+                .as_ref()
+                .map(|s| s.sync.sync_folder.clone())
+                .unwrap_or_default();
+            if sync_folder.is_empty() {
+                return Err(format!("Conversation {id} not found in local storage or sync folder"));
+            }
+            let safe_name = local_sync::id_to_filename(&id);
+            let file_path = std::path::PathBuf::from(&sync_folder)
+                .join("conversations")
+                .join(&agent)
+                .join(format!("{safe_name}.json"));
+            if !file_path.exists() {
+                return Err(format!("Conversation {id} not found in local storage or sync folder"));
+            }
+            let body = std::fs::read(&file_path)
+                .map_err(|e| format!("Failed to read synced conversation: {e}"))?;
+            serde_json::from_slice::<Conversation>(&body)
+                .map_err(|e| format!("Failed to parse synced conversation: {e}"))?
+        }
+    };
+
     let storage_path = resolve_storage_path(&agent, &id);
     let resume_command = build_resume_command(&agent, &id);
     if let Ok(store) = MemoryStore::open_app() {
