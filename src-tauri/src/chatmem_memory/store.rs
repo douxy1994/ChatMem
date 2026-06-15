@@ -1005,6 +1005,37 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// List all conversations from the memory store for a given source agent.
+    /// Returns (source_conversation_id, repo_root, summary, started_at, updated_at, message_count).
+    pub fn list_store_conversations(
+        &self,
+        source_agent: &str,
+    ) -> Result<Vec<(String, String, Option<String>, String, String, usize)>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT c.source_conversation_id, r.repo_root, c.summary, c.started_at, c.updated_at,
+                    (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.conversation_id) as msg_count
+             FROM conversations c
+             JOIN repos r ON c.repo_id = r.repo_id
+             WHERE c.source_agent = ?1
+             ORDER BY c.updated_at DESC",
+        )?;
+        let rows = stmt
+            .query_map([source_agent], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, usize>(5)?,
+                ))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(rows)
+    }
+
     pub fn list_repo_memories(&self, repo_root: &str) -> Result<Vec<ApprovedMemoryResponse>> {
         let repo_id = self.ensure_repo(repo_root)?;
         let conn = self.conn()?;

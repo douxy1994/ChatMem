@@ -1629,13 +1629,42 @@ async fn sync_webdav_now(
 async fn list_conversations(agent: String) -> Result<Vec<ConversationSummaryResponse>, String> {
     let adapter = get_adapter(&agent)?;
 
-    if !adapter.is_available() {
-        return Ok(vec![]);
+    // Get adapter conversations (local native storage)
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut results: Vec<ConversationSummaryResponse> = Vec::new();
+
+    if adapter.is_available() {
+        if let Ok(conversations) = adapter.list_conversations() {
+            for summary in conversations {
+                seen_ids.insert(summary.id.clone());
+                results.push(convert_summary(summary));
+            }
+        }
     }
 
-    let conversations = adapter.list_conversations().map_err(|e| e.to_string())?;
+    // Also include conversations from the memory store (synced from other machines)
+    if let Ok(store) = open_memory_store() {
+        if let Ok(store_convs) = store.list_store_conversations(&agent) {
+            for (source_id, repo_root, summary, started_at, updated_at, msg_count) in store_convs {
+                if seen_ids.contains(&source_id) {
+                    continue;
+                }
+                seen_ids.insert(source_id.clone());
+                results.push(ConversationSummaryResponse {
+                    id: source_id,
+                    source_agent: agent.clone(),
+                    project_dir: repo_root,
+                    created_at: started_at,
+                    updated_at,
+                    summary,
+                    message_count: msg_count,
+                    file_count: 0,
+                });
+            }
+        }
+    }
 
-    Ok(conversations.into_iter().map(convert_summary).collect())
+    Ok(results)
 }
 
 #[command]
