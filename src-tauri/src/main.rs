@@ -2256,7 +2256,38 @@ fn sync_local_now(folder_path: String) -> Result<local_sync::SyncResult, String>
             }
         }
     }
-    local_sync::bidirectional_sync(&items, &path).map_err(|e| e.to_string())
+    let result = local_sync::bidirectional_sync(&items, &path).map_err(|e| e.to_string())?;
+
+    // Import remote-only conversations into ChatMem memory store
+    if result.downloaded > 0 {
+        if let Ok(store) = open_memory_store() {
+            let remote = local_sync::read_remote_conversations(&path);
+            let mut local_ids: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+            for item in &items {
+                local_ids.insert((item.agent.clone(), item.id.clone()));
+            }
+            for ((agent, id), (_updated_at, body)) in &remote {
+                // Only import conversations that don't exist locally
+                if local_ids.contains(&(agent.clone(), id.clone())) {
+                    continue;
+                }
+                match serde_json::from_slice::<Conversation>(body) {
+                    Ok(conversation) => {
+                        if let Err(e) = sync_conversation_into_store(
+                            &store, agent, &conversation,
+                        ) {
+                            eprintln!("Warning: failed to import synced {agent}/{id}: {e}");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: failed to deserialize synced {agent}/{id}: {e}");
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 fn run_mcp_stdio() -> anyhow::Result<()> {

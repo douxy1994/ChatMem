@@ -150,7 +150,7 @@ fn read_manifest_sync_time(folder: &Path) -> Option<String> {
 
 /// Read all remote conversations from the sync folder.
 /// Returns a map of (agent, id) → (updated_at, body).
-fn read_remote_conversations(folder: &Path) -> HashMap<(String, String), (String, Vec<u8>)> {
+pub fn read_remote_conversations(folder: &Path) -> HashMap<(String, String), (String, Vec<u8>)> {
     let mut remote = HashMap::new();
     let conversations_dir = folder.join("conversations");
     if !conversations_dir.exists() {
