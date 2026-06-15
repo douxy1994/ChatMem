@@ -297,26 +297,19 @@ async fn read_conversation(agent: String, id: String) -> Result<ConversationResp
 ```typescript
 function detectMachineId(projectDir: string): string {
   const normalized = projectDir.replace(/\\/g, "/");
-  // Windows: C:/Users/xxx or D:/xxx
-  const windowsMatch = normalized.match(/^([a-zA-Z]):\/(?:Users\/([^/]+))?/);
-  if (windowsMatch) {
-    const user = windowsMatch[2] || "default";
-    return `windows:${user.toLowerCase()}`;
-  }
-  // macOS: /Users/xxx or /Volumes/xxx
-  const macUsersMatch = normalized.match(/^\/Users\/([^/]+)/);
-  if (macUsersMatch) {
-    return `macos:${macUsersMatch[1].toLowerCase()}`;
-  }
-  const macVolumesMatch = normalized.match(/^\/Volumes\/([^/]+)/);
-  if (macVolumesMatch) {
-    return `macos:${macVolumesMatch[1].toLowerCase()}`;
-  }
-  // Other
-  const segments = normalized.split("/").filter(Boolean);
-  return `other:${(segments[0] || "unknown").toLowerCase()}`;
+  // Windows: C:/Users/xxx
+  if (/^[a-zA-Z]:\//.test(normalized)) return "windows";
+  // macOS: /Users/xxx, /Volumes/xxx, /Applications
+  if (/^\/(Users|Volumes|Applications)\//i.test(normalized) || normalized === "/Applications") return "macos";
+  // Linux
+  if (/^\/(home|root|usr|opt|tmp)\//.test(normalized)) return "linux";
+  // ChatMem internal
+  if (normalized.startsWith("chatmem://")) return "internal";
+  return "other";
 }
 ```
+
+**注意**：不要按用户名拆分！同一台 Mac 上 `/users/alvis` 和 `/volumes/douxy` 都是同一台机器。
 
 ### 5b. 设置中添加 `machineGroupNames`（`src/settings/storage.ts`）
 
