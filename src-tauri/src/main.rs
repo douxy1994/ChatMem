@@ -182,6 +182,8 @@ struct SyncSettingsPayload {
     username: String,
     remote_path: String,
     download_mode: String,
+    #[serde(default)]
+    sync_folder: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -196,6 +198,10 @@ struct AppSettingsPayload {
     #[serde(default = "default_trash_retention_days")]
     trash_retention_days: i64,
     sync: SyncSettingsPayload,
+    #[serde(default)]
+    auto_backup_enabled: bool,
+    #[serde(default = "default_auto_backup_interval")]
+    auto_backup_interval_minutes: i64,
 }
 
 fn default_font_family() -> String {
@@ -208,6 +214,10 @@ fn default_auto_capture_memory() -> bool {
 
 fn default_trash_retention_days() -> i64 {
     DEFAULT_TRASH_RETENTION_DAYS
+}
+
+fn default_auto_backup_interval() -> i64 {
+    30
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
