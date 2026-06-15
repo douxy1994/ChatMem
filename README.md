@@ -6,14 +6,39 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 
 ## 当前版本
 
-最新版本：`v1.1.0`
+最新版本：`v1.1.3`
 
-1.1.0 的重点更新：
+### v1.1.3 重点更新
+
+**macOS 26 (Tahoe) 兼容修复**
+- 修复在 macOS 26 上窗口完全卡死无法操作的问题
+- 改用原生窗口装饰（`decorations: true`），移除自定义透明窗口和拖拽区域
+- 关闭按钮改为隐藏窗口（标准 macOS 行为），dock 栏右键退出才真正退出
+
+**OneDrive 双向同步**
+- 新增本地文件夹同步功能，支持 OneDrive、Google Drive、Dropbox 等任意同步目录
+- 双向合并算法：按 `updated_at` 时间戳自动判断上传/下载/跳过
+- 云端同步状态检测：自动识别 `.tmp`、`.partial`、`~$` 锁文件，避免与云盘客户端冲突
+- 定时自动备份：可配置间隔（5/15/30/60/120 分钟），云盘忙碌时自动跳过
+- 用户自选文件夹路径，通过系统原生文件夹选择器设置
+
+**Hermes Agent 支持**
+- 新增 Hermes Agent 适配器，从 `~/.hermes/state.db` SQLite 数据库读取对话
+- 设置 → Agent 集成中支持一键安装/卸载 Hermes MCP 配置
+- Hermes config.yaml 自动写入 chatmem MCP 服务器条目
+- 工具映射归入 Claude 族（Bash、Read、Write 等）
+
+**统一 Skill 管理**
+- ChatMem skill 统一存放在 `~/.skills-manager/skills/chatmem/`
+- Claude、Codex、Hermes 通过软链接共享同一份 SKILL.md，编辑一次三处生效
+- 从 Agent 列表中移除 Gemini CLI 和 OpenCode（不再需要）
+
+### v1.1.2 重点更新
 
 - 新增 ZCode 顶层来源：ZCode 下按 CLI 分组，CLI 下再按项目分组，支持 ZCode 内的 Claude、Codex、Gemini、OpenCode 等会话结构。
 - 对话标题更贴近任务内容：优先使用用户真实输入的任务文字，而不是原始 UUID、命令提示或工具调用字符串。
 - 完整对话支持 Markdown 渲染：长回答、列表、代码块、链接会以更可读的方式显示。
-- 工具调用历史更安静：多个工具调用默认折叠为小字号灰色信息层，让“用户说了什么、agent 回答了什么”成为阅读重点。
+- 工具调用历史更安静：多个工具调用默认折叠为小字号灰色信息层，让"用户说了什么、agent 回答了什么"成为阅读重点。
 - 更适合长会话延续：低 token 历史检索、对话证据窗口、checkpoint、handoff 和 Wiki 可以帮助新窗口接续，而不是重新读取整段超长对话。
 - UI 层级优化：来源选择、搜索、项目/对话列表、对话操作、关于页都按 Codex 桌面端方向重新梳理，并修复右侧对话区横向溢出。
 
@@ -44,8 +69,7 @@ macOS 推荐下载：
 | --- | --- | --- |
 | Claude | 来源 -> 项目 -> 对话 | 解析本机 Claude Code 项目对话和子代理任务。 |
 | Codex | 来源 -> 项目/本地历史 -> 对话 | 解析 Codex CLI / Codex 桌面端 rollout 与会话历史。 |
-| Gemini | 来源 -> 项目 -> 对话 | 解析 Gemini CLI 本地历史，并兼容哈希项目路径。 |
-| OpenCode | 来源 -> 项目/本地历史 -> 对话 | 解析 OpenCode 本地会话、工具调用和项目路径。 |
+| Hermes | 来源 -> 项目 -> 对话 | 解析 Hermes Agent SQLite 数据库（`~/.hermes/state.db`）。 |
 | ZCode | 来源 -> CLI -> 项目 -> 对话 | 解析 `~/.zcode/v2/acp-config`，把 ZCode 作为顶层来源，再按内部 CLI 分组。 |
 
 ZCode Windows 默认位置示例：

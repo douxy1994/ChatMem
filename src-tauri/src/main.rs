@@ -2259,6 +2259,42 @@ fn run_mcp_stdio() -> anyhow::Result<()> {
     })
 }
 
+#[cfg(target_os = "macos")]
+fn setup_macos_dock_handler(handle: tauri::AppHandle) {
+    use cocoa::base::id;
+    use objc::declare::ClassDecl;
+    use objc::runtime::{Object, Sel};
+    use objc::{class, msg_send, sel, sel_impl};
+    use tauri::Manager;
+
+    unsafe {
+        static mut APP_HANDLE: Option<tauri::AppHandle> = None;
+        APP_HANDLE = Some(handle);
+
+        extern "C" fn handle_reopen(_this: &Object, _cmd: Sel, _sender: id, _flag: bool) -> bool {
+            unsafe {
+                if let Some(ref h) = APP_HANDLE {
+                    if let Some(window) = h.get_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+            true
+        }
+
+        let mut decl = ClassDecl::new("ChatMemAppDelegate", class!(NSObject)).unwrap();
+        decl.add_method(
+            sel!(applicationShouldHandleReopen:hasVisibleWindows:),
+            handle_reopen as extern "C" fn(&Object, Sel, id, bool) -> bool,
+        );
+        let delegate_class = decl.register();
+        let delegate: id = msg_send![delegate_class, new];
+        let ns_app: id = msg_send![class!(NSApplication), sharedApplication];
+        let _: () = msg_send![ns_app, setDelegate: delegate];
+    }
+}
+
 fn main() {
     if std::env::args().any(|arg| arg == "--mcp") {
         if let Err(error) = run_mcp_stdio() {
@@ -2268,7 +2304,7 @@ fn main() {
         return;
     }
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             agent_integration::detect_agent_integrations,
             agent_integration::install_agent_integration,
@@ -2331,11 +2367,13 @@ fn main() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|_app_handle, _event| {
-            // macOS dock icon click to re-show is handled natively by the system
-            // when the window is hidden (not destroyed).
-        });
+        .expect("error while building tauri application");
+
+    // macOS: install delegate to handle dock icon click → re-show hidden window
+    #[cfg(target_os = "macos")]
+    setup_macos_dock_handler(app.handle().clone());
+
+    app.run(|_, _| {});
 }
 
 #[cfg(test)]
