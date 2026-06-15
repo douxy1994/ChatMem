@@ -33,6 +33,10 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 - Claude、Codex、Hermes 通过软链接共享同一份 SKILL.md，编辑一次三处生效
 - 从 Agent 列表中移除 Gemini CLI 和 OpenCode（不再需要）
 
+**设置持久化**
+- 同步文件夹路径、自动备份开关、备份间隔等设置保存到 `~/Library/Application Support/ChatMem/settings.json`
+- 重新安装后无需重新配置，设置自动恢复
+
 ### v1.1.2 重点更新
 
 - 新增 ZCode 顶层来源：ZCode 下按 CLI 分组，CLI 下再按项目分组，支持 ZCode 内的 Claude、Codex、Gemini、OpenCode 等会话结构。
