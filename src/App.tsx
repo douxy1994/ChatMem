@@ -137,6 +137,8 @@ type EmptyTrashConfirmState = {
   error: string | null;
 } | null;
 
+type DeleteConfirmState = { pending: true } | null;
+
 type AppNotice = {
   kind: "success" | "error";
   message: string;
@@ -368,6 +370,9 @@ type ShellCopy = {
   migrate: string;
   delete: string;
   helpHowItWorks: string;
+  deleteConfirmTitle: string;
+  deleteConfirmBody: string;
+  confirmDelete: string;
 };
 
 type ProjectGroup = {
@@ -943,6 +948,9 @@ function getShellCopy(locale: Locale): ShellCopy {
       migrate: "Migrate",
       delete: "Delete",
       helpHowItWorks: "How ChatMem works in the background",
+      deleteConfirmTitle: "Confirm Delete",
+      deleteConfirmBody: "This action will delete the local record and OneDrive sync record. Once deleted, it cannot be recovered.",
+      confirmDelete: "Confirm Delete",
     };
   }
 
@@ -1093,6 +1101,9 @@ function getShellCopy(locale: Locale): ShellCopy {
     migrate: "迁移",
     delete: "删除",
     helpHowItWorks: "了解后台工作方式",
+    deleteConfirmTitle: "确认删除",
+    deleteConfirmBody: "此操作将删除本机记录和 OneDrive 同步记录，删除后无法找回。",
+    confirmDelete: "确认删除",
   };
 }
 
@@ -1218,9 +1229,12 @@ function WindowButtonIcon({
   if (type === "sidebar") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="2.8" y="3" width="10.4" height="10" rx="1.4" />
-        <path d="M6.4 3v10" />
-        <path d="M9.1 6.2 7.4 8l1.7 1.8" />
+        {/* Sidebar panel */}
+        <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+        {/* Divider line */}
+        <line x1="6" y1="3" x2="6" y2="13" stroke="currentColor" strokeWidth="1.3" />
+        {/* Left arrow - collapse direction */}
+        <path d="M10.5 6.5L9 8l1.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -1248,9 +1262,13 @@ function WindowButtonIcon({
   if (type === "organize") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M3 4h10" />
-        <path d="M5 8h6" />
-        <path d="M7 12h2" />
+        {/* Back rectangle */}
+        <rect x="1.5" y="4.5" width="8" height="6" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        {/* Front rectangle */}
+        <rect x="5.5" y="5.5" width="8" height="6" rx="1.2" fill="var(--bg-surface, #f6f8f3)" stroke="currentColor" strokeWidth="1.2" />
+        {/* Connection dots */}
+        <circle cx="5" cy="7.5" r="0.8" fill="currentColor" />
+        <circle cx="10" cy="7.5" r="0.8" fill="currentColor" />
       </svg>
     );
   }
@@ -1435,6 +1453,7 @@ function App() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [trashConfirm, setTrashConfirm] = useState<TrashConfirmState>(null);
   const [emptyTrashConfirm, setEmptyTrashConfirm] = useState<EmptyTrashConfirmState>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>(null);
   const [trashedConversations, setTrashedConversations] = useState<TrashedConversation[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
   const [restoringTrashId, setRestoringTrashId] = useState<string | null>(null);
@@ -2135,20 +2154,29 @@ function App() {
     setTrashConfirm((current) => (current ? { ...current, busy: true, error: null } : current));
     try {
       for (const conversation of targets) {
-        await invoke("trash_conversation", {
-          agent: conversation.source_agent || selectedAgent,
-          id: conversation.id,
-          retentionDays: appSettings.trashRetentionDays,
-          deleteRemoteBackup: shouldDeleteRemote,
-          webdavScheme: syncSettings.webdavScheme,
-          webdavHost: syncSettings.webdavHost,
-          webdavPath: syncSettings.webdavPath,
-          remotePath: syncSettings.remotePath,
-          username: syncSettings.username,
-          password: webdavPassword ?? "",
-          deleteSyncBackup: shouldDeleteSync,
-          syncFolder: syncSettings.syncFolder,
-        });
+        try {
+          await invoke("trash_conversation", {
+            agent: conversation.source_agent || selectedAgent,
+            id: conversation.id,
+            retentionDays: appSettings.trashRetentionDays,
+            deleteRemoteBackup: shouldDeleteRemote,
+            webdavScheme: syncSettings.webdavScheme,
+            webdavHost: syncSettings.webdavHost,
+            webdavPath: syncSettings.webdavPath,
+            remotePath: syncSettings.remotePath,
+            username: syncSettings.username,
+            password: webdavPassword ?? "",
+            deleteSyncBackup: shouldDeleteSync,
+            syncFolder: syncSettings.syncFolder,
+          });
+        } catch (trashError) {
+          console.warn("trash_conversation failed, trying delete_memory_conversation:", trashError);
+          await invoke("delete_memory_conversation", {
+            agent: conversation.source_agent || selectedAgent,
+            id: conversation.id,
+            deleteSyncBackup: shouldDeleteSync,
+          });
+        }
       }
       setAppNotice({
         kind: "success",
@@ -4949,10 +4977,52 @@ function App() {
             <button
               type="button"
               className="btn btn-danger"
-              onClick={() => void confirmMoveConversationsToTrash()}
+              onClick={() => setDeleteConfirm({ pending: true })}
               disabled={trashConfirm.busy}
             >
               {trashConfirm.busy ? shell.movingToTrash : shell.moveToTrash}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDeleteConfirmModal = () => {
+    if (!deleteConfirm) {
+      return null;
+    }
+
+    return (
+      <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+        <div
+          className="modal trash-confirm-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-confirm-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="modal-content">
+            <h3 id="delete-confirm-title">{shell.deleteConfirmTitle}</h3>
+            <p>{shell.deleteConfirmBody}</p>
+          </div>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setDeleteConfirm(null)}
+            >
+              {shell.cancel}
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => {
+                setDeleteConfirm(null);
+                void confirmMoveConversationsToTrash();
+              }}
+            >
+              {shell.confirmDelete}
             </button>
           </div>
         </div>
@@ -5292,21 +5362,10 @@ function App() {
   return (
     <div className={`app-shell ${isWindowFilled ? "is-window-filled" : ""}`} style={appShellStyle}>
       <header className="app-topbar" style={{ paddingLeft: 78 }}>
-        <div className="topbar-left">
-          <img className="topbar-app-icon" src={brandIcon} alt="ChatMem icon" />
-          <span className="topbar-version">ChatMem v{packageInfo.version}</span>
-          <button
-            type="button"
-            className={`icon-button topbar-sidebar-toggle ${sidebarCollapsed ? "is-active" : ""}`}
-            aria-label={sidebarCollapsed ? shell.showSidebar : shell.collapseSidebar}
-            aria-pressed={sidebarCollapsed}
-            title={sidebarCollapsed ? shell.showSidebar : shell.collapseSidebar}
-            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-          >
-            <WindowButtonIcon type="sidebar" />
-          </button>
+        <div className="topbar-center">
+          <img className="topbar-app-icon" src={brandIcon} />
+          <span className="topbar-app-name">ChatMem</span>
         </div>
-
         <div className="topbar-drag-space" />
       </header>
 
@@ -5783,8 +5842,18 @@ function App() {
               <WindowButtonIcon type="help" />
               <span className="utility-nav-label">{shell.aboutChatMem}</span>
             </button>
+            <span className="utility-nav-version">v{packageInfo.version}</span>
           </nav>
         </aside>
+
+        {!showSettings && !showAbout ? (
+          <button
+            className={`sidebar-collapse-float ${sidebarCollapsed ? "is-collapsed" : ""}`}
+            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          >
+            <WindowButtonIcon type="sidebar" />
+          </button>
+        ) : null}
 
         <main
           className={`workspace ${showSettings ? "settings-workspace" : ""} ${
@@ -5805,6 +5874,7 @@ function App() {
 
       {renderMemoryDrawer()}
       {renderTrashConfirmModal()}
+      {renderDeleteConfirmModal()}
       {renderEmptyTrashConfirmModal()}
 
       {appNotice ? (

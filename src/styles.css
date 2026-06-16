@@ -128,10 +128,24 @@ button {
   gap: 8px;
 }
 
+.topbar-center {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  flex: 1;
+}
+
 .topbar-app-icon {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   display: block;
+}
+
+.topbar-app-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .topbar-version {
@@ -244,6 +258,7 @@ button {
   display: grid;
   grid-template-columns: 308px minmax(0, 1fr);
   overflow: hidden;
+  position: relative;
 }
 
 .app-body.is-full-page,
@@ -1607,11 +1622,46 @@ button {
 
 .sidebar-utility-nav {
   flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
   margin: 8px 16px 16px;
+  position: relative;
+}
+
+.utility-nav-version {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.sidebar-collapse-float {
+  position: absolute;
+  left: 8px;
+  bottom: 56px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-base);
+  z-index: 5;
+}
+
+.sidebar-collapse-float:hover {
+  background: var(--bg-selected);
+  color: var(--text-primary);
+}
+
+.sidebar-collapse-float.is-collapsed {
+  left: 8px;
 }
 
 .utility-nav-button {

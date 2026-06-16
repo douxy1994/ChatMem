@@ -6,7 +6,32 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 
 ## 当前版本
 
-最新版本：`v1.1.3`
+最新版本：`v1.2.0`
+
+### v1.2.0 重点更新
+
+**删除对话功能增强**
+- 新增确认对话框：删除前二次确认，提示"此操作将删除本机记录和 OneDrive 同步记录，删除后无法找回"
+- 新增 `delete_memory_conversation` 命令：直接从记忆库 + 同步文件夹删除对话
+- 前端 fallback：`trash_conversation` 失败时自动尝试 `delete_memory_conversation`
+- `trash_conversation` 回退：适配器找不到对话时，从同步文件夹或记忆库读取
+
+**列表显示修复**
+- `list_conversations` 直接读取同步文件夹：在适配器 + 记忆库之后，额外从 OneDrive 同步文件夹读取对话列表
+- 修复同步对话在来源视图中不可见的问题
+
+**UI 改进**
+- 标题栏居中：Logo + "ChatMem" 居中显示
+- 版本号移到底部栏右下角
+- 收起按钮浮动：从侧边栏内部移到外部，绝对定位在左下角
+- 新图标：sidebar 收起图标（面板+箭头）、manage groups 图标（重叠矩形）
+
+**ZCode 原生集成**
+- Agent 集成中新增 ZCode 选项
+- MCP 自动安装到 `~/.zcode/v2/config.json`
+- Skill 通过 skills-manager 中央仓库软链接
+
+---
 
 ### v1.1.3 重点更新
 

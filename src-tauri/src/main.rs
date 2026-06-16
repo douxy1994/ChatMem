@@ -1664,6 +1664,36 @@ async fn list_conversations(agent: String) -> Result<Vec<ConversationSummaryResp
         }
     }
 
+    // After memory store reading, read sync folder directly
+    let settings = read_app_settings_from_disk().ok().flatten();
+    let sync_folder = settings.as_ref().map(|s| s.sync.sync_folder.clone()).unwrap_or_default();
+    if !sync_folder.is_empty() {
+        let remote = local_sync::read_remote_conversations(std::path::Path::new(&sync_folder));
+        for ((remote_agent, remote_id), (updated_at, body)) in &remote {
+            if remote_agent != &agent { continue; }
+            if seen_ids.contains(remote_id) { continue; }
+            let (project_dir, summary, msg_count) = if let Ok(val) = serde_json::from_slice::<serde_json::Value>(body) {
+                let pd = val.get("project_dir").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let sm = val.get("summary").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let mc = val.get("messages").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+                (pd, sm, mc)
+            } else {
+                (String::new(), None, 0)
+            };
+            seen_ids.insert(remote_id.clone());
+            results.push(ConversationSummaryResponse {
+                id: remote_id.clone(),
+                source_agent: agent.clone(),
+                project_dir,
+                created_at: updated_at.clone(),
+                updated_at: updated_at.clone(),
+                summary,
+                message_count: msg_count,
+                file_count: 0,
+            });
+        }
+    }
+
     Ok(results)
 }
 
@@ -2009,6 +2039,32 @@ async fn trash_conversation(
 
     write_trash_record(&record)?;
     Ok(trash_record_to_response(&record))
+}
+
+#[command]
+async fn delete_memory_conversation(
+    agent: String,
+    id: String,
+    _delete_sync_backup: Option<bool>,
+) -> Result<(), String> {
+    // 1. Always delete from sync folder
+    if let Ok(Some(settings)) = read_app_settings_from_disk() {
+        let sync_folder = settings.sync.sync_folder.clone();
+        if !sync_folder.is_empty() {
+            let safe_name = local_sync::id_to_filename(&id);
+            let sync_file = std::path::PathBuf::from(&sync_folder)
+                .join("conversations").join(&agent).join(format!("{safe_name}.json"));
+            if sync_file.exists() {
+                let _ = fs::remove_file(&sync_file);
+            }
+        }
+    }
+    // 2. Delete from memory store
+    if let Ok(store) = MemoryStore::open_app() {
+        store.delete_store_conversation(&agent, &id)
+            .map_err(|e| format!("Failed to delete from memory store: {e}"))?;
+    }
+    Ok(())
 }
 
 #[command]
@@ -2565,6 +2621,7 @@ fn main() {
             migrate_conversation,
             delete_conversation,
             trash_conversation,
+            delete_memory_conversation,
             list_trashed_conversations,
             empty_trash,
             restore_trashed_conversation,
