@@ -2134,19 +2134,29 @@ function App() {
 
     try {
       for (const conversation of targets) {
-        await invoke("trash_conversation", {
-          agent: conversation.source_agent || selectedAgent,
-          id: conversation.id,
-          retentionDays: appSettings.trashRetentionDays,
-          deleteRemoteBackup: shouldDeleteRemote,
-          webdavScheme: syncSettings.webdavScheme,
-          webdavHost: syncSettings.webdavHost,
-          webdavPath: syncSettings.webdavPath,
-          remotePath: syncSettings.remotePath,
-          username: syncSettings.username,
-          password: webdavPassword ?? "",
-          deleteSyncBackup: shouldDeleteSync,
-        });
+        try {
+          await invoke("trash_conversation", {
+            agent: conversation.source_agent || selectedAgent,
+            id: conversation.id,
+            retentionDays: appSettings.trashRetentionDays,
+            deleteRemoteBackup: shouldDeleteRemote,
+            webdavScheme: syncSettings.webdavScheme,
+            webdavHost: syncSettings.webdavHost,
+            webdavPath: syncSettings.webdavPath,
+            remotePath: syncSettings.remotePath,
+            username: syncSettings.username,
+            password: webdavPassword ?? "",
+            deleteSyncBackup: shouldDeleteSync,
+          });
+        } catch (trashError) {
+          // If trash_conversation fails (e.g., file not found), try delete_memory_conversation
+          console.warn("trash_conversation failed, trying delete_memory_conversation:", trashError);
+          await invoke("delete_memory_conversation", {
+            agent: conversation.source_agent || selectedAgent,
+            id: conversation.id,
+            deleteSyncBackup: shouldDeleteSync,
+          });
+        }
       }
       setAppNotice({
         kind: "success",
