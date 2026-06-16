@@ -21,21 +21,49 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 - 云端同步状态检测：自动识别 `.tmp`、`.partial`、`~$` 锁文件，避免与云盘客户端冲突
 - 定时自动备份：可配置间隔（5/15/30/60/120 分钟），云盘忙碌时自动跳过
 - 用户自选文件夹路径，通过系统原生文件夹选择器设置
+- **修复 Windows error 123**：ZCode 对话 ID 含冒号，Windows 不允许冒号作文件名。写入时编码为 `&#x3a;`，读取时解码还原
+- **同步自动导入**：远程对话同步后自动写入 ChatMem 记忆库，切换来源即可查看跨机器对话
+- 跨平台文件名编码规范见 `docs/cross-platform-filename-encoding.md`
+
+**系统托盘（Windows）/ Dock 行为优化（macOS）**
+- 关闭按钮最小化到系统托盘（不退出应用）
+- 托盘右键菜单：打开主界面 / 同步 / 退出
+- 单击托盘图标恢复窗口
 
 **Hermes Agent 支持**
 - 新增 Hermes Agent 适配器，从 `~/.hermes/state.db` SQLite 数据库读取对话
-- 设置 → Agent 集成中支持一键安装/卸载 Hermes MCP 配置
-- Hermes config.yaml 自动写入 chatmem MCP 服务器条目
-- 工具映射归入 Claude 族（Bash、Read、Write 等）
+- Windows 端使用 `AppData/Local/hermes/state.db`
+- 设置 → Agent 集成中支持一键安装/卸载 Hermes MCP 配置和 Skill
+- 修复工具调用显示 unknown：正确解析 OpenAI 格式（function.name/arguments）
+
+**ZCode 原生集成**
+- 新增 ZCode 集成支持，设置 → Agent 集成可管理
+- MCP 自动安装到 `~/.zcode/v2/config.json`
+- Skill 通过 skills-manager 中央仓库软链接到 `~/.zcode/skills/chatmem/`
+
+**机器分组**
+- 自动检测对话来源机器（Windows / Mac / Linux）
+- 多台电脑时显示机器分组层，单台时不显示
+- 双击分组名称可自定义重命名，保存到设置
+- 支持合并电脑分组、移动对话到其他分组
+
+**对话来源视图增强**
+- 来源视图合并本地适配器 + 记忆库数据，同步的对话在来源视图中可见
+- 点击同步的对话可正常查看详情，适配器失败时自动从同步文件夹读取
 
 **统一 Skill 管理**
 - ChatMem skill 统一存放在 `~/.skills-manager/skills/chatmem/`
-- Claude、Codex、Hermes 通过软链接共享同一份 SKILL.md，编辑一次三处生效
+- Claude、Codex、Hermes、ZCode 通过软链接/Junction 共享同一份 SKILL.md
 - 从 Agent 列表中移除 Gemini CLI 和 OpenCode（不再需要）
 
 **设置持久化**
-- 同步文件夹路径、自动备份开关、备份间隔等设置保存到 `~/Library/Application Support/ChatMem/settings.json`
+- 同步文件夹路径、自动备份开关、备份间隔等设置保存到 settings.json
+- Windows：`AppData/Roaming/ChatMem/settings.json`；macOS：`~/Library/Application Support/ChatMem/settings.json`
 - 重新安装后无需重新配置，设置自动恢复
+
+**跨平台构建修复**
+- macOS 专用依赖（cocoa/objc）改为平台条件依赖，Windows 编译不再报错
+- Windows x64 构建通过 `npx tauri build --target x86_64-pc-windows-msvc`
 
 ### v1.1.2 重点更新
 
