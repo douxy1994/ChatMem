@@ -122,23 +122,25 @@ button {
   min-width: 0;
 }
 
-.topbar-left {
-  display: inline-flex;
+.topbar-center {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  justify-content: center;
+  flex: 1;
 }
 
 .topbar-app-icon {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   display: block;
 }
 
-.topbar-version {
+.topbar-app-name {
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
+  letter-spacing: -0.3px;
 }
 
 .topbar-sidebar-toggle {
@@ -239,6 +241,7 @@ button {
 }
 
 .app-body {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: grid;
@@ -1608,10 +1611,63 @@ button {
 .sidebar-utility-nav {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: auto repeat(3, minmax(0, 1fr));
   align-items: center;
   gap: 6px;
   margin: 8px 16px 16px;
+}
+
+.sidebar-collapse-btn {
+  width: 36px;
+  min-height: 36px;
+  border-radius: var(--radius-md);
+}
+
+.sidebar-collapse-float {
+  position: absolute;
+  left: 8px;
+  bottom: 16px;
+  width: 36px;
+  height: 36px;
+  appearance: none;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface, #fff);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  z-index: 10;
+  transition:
+    background var(--transition-base),
+    color var(--transition-base),
+    transform var(--transition-base);
+}
+
+.sidebar-collapse-float svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar-collapse-float:hover {
+  background: rgba(58, 143, 100, 0.08);
+  color: var(--accent-strong);
+}
+
+.sidebar-collapse-float.is-collapsed {
+  left: 8px;
+  background: rgba(58, 143, 100, 0.08);
+}
+
+.utility-nav-version {
+  grid-column: 1 / -1;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-right: 4px;
+  margin-top: -2px;
 }
 
 .utility-nav-button {

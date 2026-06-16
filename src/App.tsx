@@ -5374,19 +5374,9 @@ function App() {
   return (
     <div className={`app-shell ${isWindowFilled ? "is-window-filled" : ""}`} style={appShellStyle}>
       <header className="app-topbar" style={{ paddingLeft: 78 }}>
-        <div className="topbar-left">
+        <div className="topbar-center">
           <img className="topbar-app-icon" src={brandIcon} alt="ChatMem icon" />
-          <span className="topbar-version">ChatMem v{packageInfo.version}</span>
-          <button
-            type="button"
-            className={`icon-button topbar-sidebar-toggle ${sidebarCollapsed ? "is-active" : ""}`}
-            aria-label={sidebarCollapsed ? shell.showSidebar : shell.collapseSidebar}
-            aria-pressed={sidebarCollapsed}
-            title={sidebarCollapsed ? shell.showSidebar : shell.collapseSidebar}
-            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-          >
-            <WindowButtonIcon type="sidebar" />
-          </button>
+          <span className="topbar-app-name">ChatMem</span>
         </div>
 
         <div className="topbar-drag-space" />
@@ -5865,8 +5855,22 @@ function App() {
               <WindowButtonIcon type="help" />
               <span className="utility-nav-label">{shell.aboutChatMem}</span>
             </button>
+
+            <span className="utility-nav-version">v{packageInfo.version}</span>
           </nav>
         </aside>
+
+        {!showSettings && !showAbout ? (
+          <button
+            type="button"
+            className={`sidebar-collapse-float ${sidebarCollapsed ? "is-collapsed" : ""}`}
+            aria-label={sidebarCollapsed ? shell.showSidebar : shell.collapseSidebar}
+            title={sidebarCollapsed ? shell.showSidebar : shell.collapseSidebar}
+            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          >
+            <WindowButtonIcon type="sidebar" />
+          </button>
+        ) : null}
 
         <main
           className={`workspace ${showSettings ? "settings-workspace" : ""} ${
