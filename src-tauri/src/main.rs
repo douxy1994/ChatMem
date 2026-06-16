@@ -1851,26 +1851,26 @@ async fn delete_conversation(agent: String, id: String) -> Result<(), String> {
 }
 
 /// Delete a conversation that only exists in the memory store (not in local file system).
-/// This is used when the adapter can't find the conversation file.
+/// Always deletes from both memory store and sync folder.
 #[command]
 async fn delete_memory_conversation(
     agent: String,
     id: String,
-    delete_sync_backup: Option<bool>,
+    _delete_sync_backup: Option<bool>,
 ) -> Result<(), String> {
-    // Delete from sync folder if requested
-    let should_delete_sync = delete_sync_backup.unwrap_or(false);
-    if should_delete_sync {
-        if let Ok(Some(settings)) = read_app_settings_from_disk() {
-            let sync_folder = settings.sync.sync_folder.clone();
-            if !sync_folder.is_empty() {
-                let safe_name = local_sync::id_to_filename(&id);
-                let sync_file = std::path::PathBuf::from(&sync_folder)
-                    .join("conversations")
-                    .join(&agent)
-                    .join(format!("{safe_name}.json"));
-                if sync_file.exists() {
-                    let _ = fs::remove_file(&sync_file);
+    // Always delete from sync folder
+    if let Ok(Some(settings)) = read_app_settings_from_disk() {
+        let sync_folder = settings.sync.sync_folder.clone();
+        if !sync_folder.is_empty() {
+            let safe_name = local_sync::id_to_filename(&id);
+            let sync_file = std::path::PathBuf::from(&sync_folder)
+                .join("conversations")
+                .join(&agent)
+                .join(format!("{safe_name}.json"));
+            if sync_file.exists() {
+                match fs::remove_file(&sync_file) {
+                    Ok(()) => println!("Deleted sync file: {}", sync_file.display()),
+                    Err(e) => eprintln!("Failed to delete sync file: {e}"),
                 }
             }
         }
@@ -1878,8 +1878,11 @@ async fn delete_memory_conversation(
 
     // Delete from memory store
     if let Ok(store) = MemoryStore::open_app() {
-        store.delete_store_conversation(&agent, &id)
-            .map_err(|e| format!("Failed to delete from memory store: {e}"))?;
+        match store.delete_store_conversation(&agent, &id) {
+            Ok(true) => println!("Deleted from memory store: {agent}/{id}"),
+            Ok(false) => println!("Not found in memory store: {agent}/{id}"),
+            Err(e) => return Err(format!("Failed to delete from memory store: {e}")),
+        }
     }
 
     Ok(())

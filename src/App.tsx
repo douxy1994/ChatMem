@@ -132,6 +132,10 @@ type TrashConfirmState = {
   error: string | null;
 } | null;
 
+type DeleteConfirmState = {
+  conversation: Pick<ConversationSummary, "id" | "source_agent" | "summary"> | Pick<Conversation, "id" | "source_agent" | "summary">;
+} | null;
+
 type EmptyTrashConfirmState = {
   busy: boolean;
   error: string | null;
@@ -340,6 +344,10 @@ type ShellCopy = {
   confirmTrashRemotePasswordMissing: string;
   confirmTrashSyncBackup: string;
   confirmTrashSyncUnavailable: string;
+  confirmDeleteTitle: string;
+  confirmDeleteBody: string;
+  confirmDeleteConfirm: string;
+  confirmDeleteCancel: string;
   cancel: string;
   moveToTrash: string;
   movingToTrash: string;
@@ -909,6 +917,10 @@ function getShellCopy(locale: Locale): ShellCopy {
       confirmTrashRemotePasswordMissing: "WebDAV password is missing. Save it in Settings before deleting cloud backups.",
       confirmTrashSyncBackup: "Also delete OneDrive sync file (will sync deletion to other devices)",
       confirmTrashSyncUnavailable: "OneDrive sync folder is not configured.",
+      confirmDeleteTitle: "Confirm Delete",
+      confirmDeleteBody: "This will delete local records and OneDrive sync records. This action cannot be undone.",
+      confirmDeleteConfirm: "Delete",
+      confirmDeleteCancel: "Cancel",
       cancel: "Cancel",
       moveToTrash: "Move to Trash",
       movingToTrash: "Moving...",
@@ -1064,6 +1076,10 @@ function getShellCopy(locale: Locale): ShellCopy {
     confirmTrashRemotePasswordMissing: "缺少 WebDAV 密码。请先在设置里保存密码，再删除云端备份。",
     confirmTrashSyncBackup: "同时删除 OneDrive 同步文件（删除会同步到其他设备）",
     confirmTrashSyncUnavailable: "未配置 OneDrive 同步文件夹。",
+    confirmDeleteTitle: "确认删除",
+    confirmDeleteBody: "此操作将删除本机记录和 OneDrive 同步记录，删除后无法找回。",
+    confirmDeleteConfirm: "确认删除",
+    confirmDeleteCancel: "取消",
     cancel: "取消",
     moveToTrash: "移到垃圾箱",
     movingToTrash: "正在移动...",
@@ -1434,6 +1450,7 @@ function App() {
   const [selectedConversationKeys, setSelectedConversationKeys] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [trashConfirm, setTrashConfirm] = useState<TrashConfirmState>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>(null);
   const [emptyTrashConfirm, setEmptyTrashConfirm] = useState<EmptyTrashConfirmState>(null);
   const [trashedConversations, setTrashedConversations] = useState<TrashedConversation[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
@@ -3403,7 +3420,7 @@ function App() {
             disabled={deletingConversationId === conversation.id}
             onClick={(event) => {
               event.stopPropagation();
-              void handleDeleteConversation(conversation);
+              setDeleteConfirm({ conversation });
             }}
           >
             {shell.delete}
@@ -4967,6 +4984,57 @@ function App() {
     );
   };
 
+  const renderDeleteConfirmModal = () => {
+    if (!deleteConfirm) {
+      return null;
+    }
+
+    const title = normalizeConversationTitle(deleteConfirm.conversation.summary) || deleteConfirm.conversation.id;
+
+    return (
+      <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+        <div
+          className="modal trash-confirm-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-confirm-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="modal-content">
+            <h3 id="delete-confirm-title">{shell.confirmDeleteTitle}</h3>
+            <p>{shell.confirmDeleteBody}</p>
+
+            <div className="trash-confirm-list">
+              <div className="trash-confirm-item">
+                <strong>{title}</strong>
+                <span>{deleteConfirm.conversation.source_agent}</span>
+              </div>
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setDeleteConfirm(null)}
+            >
+              {shell.confirmDeleteCancel}
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={async () => {
+                setDeleteConfirm(null);
+                await handleDeleteConversation(deleteConfirm.conversation);
+              }}
+            >
+              {shell.confirmDeleteConfirm}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderEmptyTrashConfirmModal = () => {
     if (!emptyTrashConfirm) {
       return null;
@@ -5812,6 +5880,7 @@ function App() {
 
       {renderMemoryDrawer()}
       {renderTrashConfirmModal()}
+      {renderDeleteConfirmModal()}
       {renderEmptyTrashConfirmModal()}
 
       {appNotice ? (
