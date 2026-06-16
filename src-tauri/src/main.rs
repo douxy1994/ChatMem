@@ -1834,10 +1834,10 @@ async fn trash_conversation(
     delete_sync_backup: Option<bool>,
     sync_folder: Option<String>,
 ) -> Result<TrashConversationResponse, String> {
-    let conversation = {
+    let (conversation, from_sync) = {
         let adapter = get_adapter(&agent)?;
         match adapter.read_conversation(&id) {
-            Ok(conv) => conv,
+            Ok(conv) => (conv, false),
             Err(_) => {
                 // Adapter doesn't have it — try reading from sync folder
                 let folder = sync_folder.as_deref().unwrap_or("");
@@ -1854,8 +1854,9 @@ async fn trash_conversation(
                 }
                 let body = std::fs::read(&file_path)
                     .map_err(|e| format!("Failed to read synced conversation: {e}"))?;
-                serde_json::from_slice::<Conversation>(&body)
-                    .map_err(|e| format!("Failed to parse synced conversation: {e}"))?
+                let conv = serde_json::from_slice::<Conversation>(&body)
+                    .map_err(|e| format!("Failed to parse synced conversation: {e}"))?;
+                (conv, true) // true = from sync folder, skip adapter delete
             }
         }
     };
@@ -1940,10 +1941,12 @@ async fn trash_conversation(
 
     {
         let adapter = get_adapter(&agent)?;
-        adapter.delete_conversation(&id).map_err(|error| {
-            let _ = fs::remove_file(&record_path);
-            error.to_string()
-        })?;
+        if !from_sync {
+            adapter.delete_conversation(&id).map_err(|error| {
+                let _ = fs::remove_file(&record_path);
+                error.to_string()
+            })?;
+        }
     }
 
     if let Some((client, remote_url, settings)) = remote_manifest_update {
