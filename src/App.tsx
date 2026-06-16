@@ -1235,10 +1235,9 @@ function WindowButtonIcon({
   if (type === "sidebar") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="2" y="3" width="12" height="10" rx="1.5" />
-        <line x1="6.5" y1="3" x2="6.5" y2="13" />
-        <polyline points="10.5,5.5 9,7 10.5,8.5" />
-        <line x1="12" y1="7" x2="9" y2="7" />
+        <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+        <line x1="6.5" y1="3" x2="6.5" y2="13" stroke="currentColor" strokeWidth="1.3" />
+        <path d="M12 7l-1.8-1.5M12 7l-1.8 1.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -4582,60 +4581,52 @@ function App() {
   const renderAboutWorkspace = () => {
     const releaseItems = [
       {
-        icon: "spark" as const,
-        title: locale === "en" ? "Low-token continuation prompts" : "\u7701 token \u7eed\u63a5\u63d0\u793a",
-        body:
-          locale === "en"
-            ? "Conversation toolbars can copy a compact ChatMem prompt that starts from project context, checkpoints, and focused evidence windows instead of raw transcripts."
-            : "\u5bf9\u8bdd\u5de5\u5177\u680f\u53ef\u4ee5\u590d\u5236\u7b80\u77ed\u7684 ChatMem \u7eed\u63a5\u63d0\u793a\uff0c\u5148\u8bfb\u9879\u76ee\u4e0a\u4e0b\u6587\u3001\u68c0\u67e5\u70b9\u548c\u805a\u7126\u8bc1\u636e\u7a97\u53e3\uff0c\u800c\u4e0d\u662f\u539f\u59cb transcript\u3002",
-      },
-      {
         icon: "trash" as const,
-        title: locale === "en" ? "Trash actions stay visible" : "垃圾箱操作保持可见",
+        title: locale === "en" ? "Delete confirmation dialog" : "删除确认对话框",
         body:
           locale === "en"
-            ? "Empty Trash now sits below the title on the left, so it remains reachable when the page is narrow or the sidebar is collapsed."
-            : "清空垃圾箱现在固定在标题下方左侧，页面变窄或折叠侧栏时也能直接点到。",
+            ? "Deleting conversations now shows a confirmation dialog warning that local records and OneDrive sync will be permanently removed."
+            : "删除对话时新增确认对话框，提示将删除本机记录和 OneDrive 同步记录，无法找回。",
       },
       {
-        icon: "sidebar" as const,
-        title: locale === "en" ? "Collapsible sidebar" : "可折叠侧栏",
+        icon: "source" as const,
+        title: locale === "en" ? "Sync folder direct read" : "同步文件夹直接读取",
         body:
           locale === "en"
-            ? "The top bar can hide or restore the left navigation, giving the workspace more room when you need it."
-            : "顶栏现在可以收起或恢复左侧导航，需要更大工作区时不用再拖窗口。",
+            ? "Conversation list now reads directly from OneDrive sync folder without running sync first, machine grouping works immediately."
+            : "对话列表直接从 OneDrive 同步文件夹读取，无需先运行同步，机器分组立即生效。",
       },
       {
         icon: "conversation" as const,
-        title: locale === "en" ? "ZCode task history" : "ZCode 任务历史",
+        title: locale === "en" ? "ZCode native integration" : "ZCode 原生支持",
         body:
           locale === "en"
-            ? "ZCode is now a top-level source, with CLI groups underneath it and project groups underneath each CLI."
-            : "ZCode 现在作为顶层来源展示，下一级按 CLI 分组，再往下才按项目组织对话。",
+            ? "ZCode added to Agent Integration with auto MCP install to ~/.zcode/v2/config.json and skill symlink from skills-manager."
+            : "ZCode 新增到 Agent 集成，MCP 自动安装到配置文件，Skill 从 skills-manager 软链接。",
+      },
+      {
+        icon: "sidebar" as const,
+        title: locale === "en" ? "UI refinements" : "UI 改进",
+        body:
+          locale === "en"
+            ? "Logo and app name centered in title bar, version moved to bottom-right, sidebar collapse button redesigned with better icons."
+            : "标题栏 Logo + 名称居中，版本号移到右下角，收起按钮和管理分组图标重新设计。",
       },
       {
         icon: "memory" as const,
-        title: locale === "en" ? "Smarter conversation names" : "更聪明的对话命名",
+        title: locale === "en" ? "Memory-only conversation delete" : "内存对话删除",
         body:
           locale === "en"
-            ? "Conversation titles prioritize the task you actually typed, instead of raw IDs, command caveats, or tool strings."
-            : "对话标题优先使用你真正输入的任务内容，而不是原始 ID、命令提示或工具字符串。",
-      },
-      {
-        icon: "wiki" as const,
-        title: locale === "en" ? "Markdown conversation reading" : "Markdown 对话阅读",
-        body:
-          locale === "en"
-            ? "Full conversation views render Markdown so long answers, lists, code blocks, and links are easier to scan."
-            : "完整对话会渲染 Markdown，长回答、列表、代码块和链接会更容易阅读。",
+            ? "Conversations that only exist in memory store can now be properly deleted, with automatic sync file cleanup."
+            : "只存在于内存存储的对话现在可以正常删除，同步文件自动清理。",
       },
       {
         icon: "shield" as const,
-        title: locale === "en" ? "Quieter tool history" : "更安静的工具历史",
+        title: locale === "en" ? "macOS template icon" : "macOS 主题图标",
         body:
           locale === "en"
-            ? "Tool-call groups are folded into a smaller gray layer so user intent and agent replies stay visually dominant."
-            : "工具调用会折叠成更小的灰色信息层，让你的输入和 Agent 回答成为阅读重点。",
+            ? "System tray icon enabled as template image, automatically adapts to light/dark mode on macOS."
+            : "系统托盘图标启用模板模式，macOS 浅色/深色模式自动适配。",
       },
     ];
 

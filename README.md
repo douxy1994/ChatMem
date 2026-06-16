@@ -6,7 +6,37 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 
 ## 当前版本
 
-最新版本：`v1.1.3`
+最新版本：`v1.2.0`
+
+### v1.2.0 重点更新
+
+**删除对话功能增强**
+- 删除对话时新增确认对话框：提示"此操作将删除本机记录和 OneDrive 同步记录，删除后无法找回"
+- 确认对话框在选择删除选项（OneDrive/WebDAV）之后弹出，流程：点删除 → 选选项 → 确认 → 执行
+- 删除同步文件夹中的对话时，自动删除对应的 OneDrive 同步文件，同步删除会传播到其他设备
+- 修复只存在于内存存储（已从本地删除但未从记忆库清除）的对话无法删除的问题
+- `delete_memory_conversation` 命令：同时从内存存储（SQLite）和同步文件夹中删除
+
+**list_conversations 直接读取同步文件夹**
+- 切换来源时，直接从 OneDrive 同步文件夹读取对话列表，无需先运行同步
+- 同步文件夹中的 Windows/Mac 对话立即可见，机器分组功能自动生效
+
+**ZCode 原生支持**
+- 新增 `IntegrationAgent::ZCode` 到 agent_integration
+- 配置路径：`~/.zcode/v2/config.json`
+- Skill 路径：`~/.zcode/skills/chatmem/SKILL.md`（软链接到 skills-manager）
+- MCP 自动安装/卸载到 ZCode 配置
+
+**UI 改进**
+- 标题栏：Logo + "ChatMem" 居中显示，更大更醒目
+- 版本号移到底部栏右下角
+- 侧边栏收起按钮重新设计：面板+箭头图标，放在底部栏左侧
+- 管理分组图标重新设计：双面板+连接线，区别于筛选排序图标
+- 收起按钮在设置/关于页面自动隐藏（因为没有侧边栏）
+
+**macOS 主题切换图标**
+- 系统托盘图标启用 `iconAsTemplate: true`
+- macOS 自动根据浅色/深色模式调整图标颜色
 
 ### v1.1.3 重点更新
 
