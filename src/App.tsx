@@ -127,6 +127,7 @@ interface EmptyTrashResponse {
 type TrashConfirmState = {
   targets: TrashTarget[];
   deleteRemoteBackup: boolean;
+  deleteSyncBackup: boolean;
   busy: boolean;
   error: string | null;
 } | null;
@@ -337,6 +338,8 @@ type ShellCopy = {
   confirmTrashRemoteBackup: string;
   confirmTrashRemoteUnavailable: string;
   confirmTrashRemotePasswordMissing: string;
+  confirmTrashSyncBackup: string;
+  confirmTrashSyncUnavailable: string;
   cancel: string;
   moveToTrash: string;
   movingToTrash: string;
@@ -904,6 +907,8 @@ function getShellCopy(locale: Locale): ShellCopy {
       confirmTrashRemoteBackup: "Also delete the WebDAV cloud backup",
       confirmTrashRemoteUnavailable: "WebDAV sync is not configured, so no cloud backup will be deleted.",
       confirmTrashRemotePasswordMissing: "WebDAV password is missing. Save it in Settings before deleting cloud backups.",
+      confirmTrashSyncBackup: "Also delete OneDrive sync backup",
+      confirmTrashSyncUnavailable: "OneDrive sync folder is not configured.",
       cancel: "Cancel",
       moveToTrash: "Move to Trash",
       movingToTrash: "Moving...",
@@ -1057,6 +1062,8 @@ function getShellCopy(locale: Locale): ShellCopy {
     confirmTrashRemoteBackup: "同时删除 WebDAV 网盘备份",
     confirmTrashRemoteUnavailable: "未配置 WebDAV 同步，不会处理云端备份。",
     confirmTrashRemotePasswordMissing: "缺少 WebDAV 密码。请先在设置里保存密码，再删除云端备份。",
+    confirmTrashSyncBackup: "同时删除 OneDrive 同步备份",
+    confirmTrashSyncUnavailable: "未配置 OneDrive 同步文件夹，不会处理同步备份。",
     cancel: "取消",
     moveToTrash: "移到垃圾箱",
     movingToTrash: "正在移动...",
@@ -2078,6 +2085,7 @@ function App() {
         summary: target.summary ?? null,
       })),
       deleteRemoteBackup: false,
+      deleteSyncBackup: false,
       busy: false,
       error: null,
     });
@@ -2099,6 +2107,9 @@ function App() {
       syncSettings.provider === "webdav" &&
       syncSettings.webdavHost.trim().length > 0 &&
       syncSettings.username.trim().length > 0;
+    const shouldDeleteSync =
+      trashConfirm.deleteSyncBackup &&
+      syncSettings.syncFolder.trim().length > 0;
     let webdavPassword: string | null = null;
 
     if (shouldDeleteRemote) {
@@ -2135,6 +2146,8 @@ function App() {
           remotePath: syncSettings.remotePath,
           username: syncSettings.username,
           password: webdavPassword ?? "",
+          deleteSyncBackup: shouldDeleteSync,
+          syncFolder: syncSettings.syncFolder,
         });
       }
       setAppNotice({
@@ -4841,6 +4854,8 @@ function App() {
       appSettings.sync.provider === "webdav" &&
       appSettings.sync.webdavHost.trim().length > 0 &&
       appSettings.sync.username.trim().length > 0;
+    const syncFolderAvailable =
+      appSettings.sync.syncFolder.trim().length > 0;
     const previewTargets = trashConfirm.targets.slice(0, 4);
 
     return (
@@ -4895,6 +4910,28 @@ function App() {
             </label>
             {!remoteAvailable ? (
               <p className="trash-remote-note">{shell.confirmTrashRemoteUnavailable}</p>
+            ) : null}
+            <label className={`trash-remote-option ${syncFolderAvailable ? "" : "is-disabled"}`}>
+              <input
+                type="checkbox"
+                checked={trashConfirm.deleteSyncBackup && syncFolderAvailable}
+                disabled={!syncFolderAvailable || trashConfirm.busy}
+                onChange={(event) =>
+                  setTrashConfirm((current) =>
+                    current
+                      ? {
+                          ...current,
+                          deleteSyncBackup: event.target.checked,
+                          error: null,
+                        }
+                      : current,
+                  )
+                }
+              />
+              <span>{shell.confirmTrashSyncBackup}</span>
+            </label>
+            {!syncFolderAvailable ? (
+              <p className="trash-remote-note">{shell.confirmTrashSyncUnavailable}</p>
             ) : null}
             {trashConfirm.error ? (
               <p className="settings-notice is-danger">{trashConfirm.error}</p>

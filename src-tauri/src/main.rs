@@ -1814,7 +1814,7 @@ async fn migrate_conversation(
 
 #[command]
 async fn delete_conversation(agent: String, id: String) -> Result<(), String> {
-    trash_conversation(agent, id, None, None, None, None, None, None, None, None)
+    trash_conversation(agent, id, None, None, None, None, None, None, None, None, None, None)
         .await
         .map(|_| ())
 }
@@ -1831,6 +1831,8 @@ async fn trash_conversation(
     remote_path: Option<String>,
     username: Option<String>,
     password: Option<String>,
+    delete_sync_backup: Option<bool>,
+    sync_folder: Option<String>,
 ) -> Result<TrashConversationResponse, String> {
     let conversation = {
         let adapter = get_adapter(&agent)?;
@@ -1894,6 +1896,27 @@ async fn trash_conversation(
         record.remote_backup_deleted = true;
         record.remote_backup_path = Some(remote_file);
         remote_manifest_update = Some((client, remote_url, settings));
+    }
+
+    // Delete from OneDrive sync folder if requested
+    let should_delete_sync = delete_sync_backup.unwrap_or(false);
+    if should_delete_sync {
+        if let Some(ref folder) = sync_folder {
+            if !folder.is_empty() {
+                let safe_name = local_sync::id_to_filename(&id);
+                let sync_file = std::path::PathBuf::from(folder)
+                    .join("conversations")
+                    .join(&agent)
+                    .join(format!("{safe_name}.json"));
+                if sync_file.exists() {
+                    if let Err(e) = fs::remove_file(&sync_file) {
+                        record.warnings.push(format!("Failed to delete sync backup: {e}"));
+                    } else {
+                        record.remote_backup_deleted = true;
+                    }
+                }
+            }
+        }
     }
 
     {
