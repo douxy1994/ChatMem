@@ -1878,10 +1878,8 @@ async fn delete_memory_conversation(
 
     // Delete from memory store
     if let Ok(store) = MemoryStore::open_app() {
-        // The memory store doesn't have a direct delete method for conversations,
-        // but we can mark it as deleted by removing the source_conversation_id
-        // For now, we'll just return Ok and let the UI refresh handle it
-        // The conversation will be removed from the list on next load
+        store.delete_store_conversation(&agent, &id)
+            .map_err(|e| format!("Failed to delete from memory store: {e}"))?;
     }
 
     Ok(())
