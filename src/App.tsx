@@ -1204,6 +1204,7 @@ function WindowButtonIcon({
     | "wiki"
     | "shield"
     | "spark"
+    | "machineGroup"
     | "chevron";
 }) {
   if (type === "minimize") {
@@ -1234,9 +1235,10 @@ function WindowButtonIcon({
   if (type === "sidebar") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="2.8" y="3" width="10.4" height="10" rx="1.4" />
-        <path d="M6.4 3v10" />
-        <path d="M9.1 6.2 7.4 8l1.7 1.8" />
+        <rect x="2" y="3" width="12" height="10" rx="1.5" />
+        <line x1="6.5" y1="3" x2="6.5" y2="13" />
+        <polyline points="10.5,5.5 9,7 10.5,8.5" />
+        <line x1="12" y1="7" x2="9" y2="7" />
       </svg>
     );
   }
@@ -1418,6 +1420,16 @@ function WindowButtonIcon({
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <path d="M8 2.8 9.1 6l3.1 1.1L9.1 8.2 8 11.4 6.9 8.2 3.8 7.1 6.9 6Z" />
         <path d="M11.6 10.2 12.1 11.5l1.3.5-1.3.5-.5 1.3-.5-1.3-1.3-.5 1.3-.5Z" />
+      </svg>
+    );
+  }
+
+  if (type === "machineGroup") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="5" width="5" height="6" rx="1" />
+        <rect x="9" y="5" width="5" height="6" rx="1" />
+        <path d="M7 8h2" />
       </svg>
     );
   }
@@ -5489,7 +5501,7 @@ function App() {
                         }
                       }}
                     >
-                      <WindowButtonIcon type="organize" />
+                      <WindowButtonIcon type="machineGroup" />
                       <span className="sidebar-action-tooltip" aria-hidden="true">
                         {mgSelectMode ? "取消管理分组" : "管理分组"}
                       </span>

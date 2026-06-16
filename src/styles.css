@@ -1610,11 +1610,12 @@ button {
 
 .sidebar-utility-nav {
   flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: auto repeat(3, minmax(0, 1fr));
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
   margin: 8px 16px 16px;
+  position: relative;
 }
 
 .sidebar-collapse-btn {
@@ -1626,29 +1627,28 @@ button {
 .sidebar-collapse-float {
   position: absolute;
   left: 8px;
-  bottom: 16px;
-  width: 36px;
-  height: 36px;
+  bottom: 56px;
+  width: 32px;
+  height: 32px;
   appearance: none;
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
+  border-radius: 8px;
   background: var(--bg-surface, #fff);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   z-index: 10;
   transition:
     background var(--transition-base),
-    color var(--transition-base),
-    transform var(--transition-base);
+    color var(--transition-base);
 }
 
 .sidebar-collapse-float svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.6;
 }
 
 .sidebar-collapse-float:hover {
@@ -1658,16 +1658,15 @@ button {
 
 .sidebar-collapse-float.is-collapsed {
   left: 8px;
+  bottom: 56px;
   background: rgba(58, 143, 100, 0.08);
 }
 
 .utility-nav-version {
-  grid-column: 1 / -1;
-  text-align: right;
   font-size: 11px;
   color: var(--text-muted);
-  padding-right: 4px;
-  margin-top: -2px;
+  margin-left: auto;
+  padding-left: 8px;
 }
 
 .utility-nav-button {
