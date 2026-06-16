@@ -39,7 +39,7 @@
       "longDescription": "ChatMem indexes local Claude, Codex, Gemini, and OpenCode conversations, then turns them into searchable history, startup rules, wiki context, handoff packets, and cross-agent migration flows."
     },
     "systemTray": {
-      "iconPath": "icons/icon-template-128.png",
+      "iconPath": "icons/128x128.png",
       "iconAsTemplate": true
     },
     "security": {

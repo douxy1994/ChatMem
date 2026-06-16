@@ -1866,9 +1866,25 @@ async fn trash_conversation(
 ) -> Result<TrashConversationResponse, String> {
     let conversation = {
         let adapter = get_adapter(&agent)?;
-        adapter
-            .read_conversation(&id)
-            .map_err(|error| error.to_string())?
+        match adapter.read_conversation(&id) {
+            Ok(conv) => conv,
+            Err(_) => {
+                // Adapter can't find it — try reading from the sync folder
+                let settings = read_app_settings_from_disk()?;
+                let sync_folder = settings.as_ref().map(|s| s.sync.sync_folder.clone()).unwrap_or_default();
+                if sync_folder.is_empty() {
+                    return Err(format!("Conversation {id} not found"));
+                }
+                let safe_name = local_sync::id_to_filename(&id);
+                let file_path = std::path::PathBuf::from(&sync_folder)
+                    .join("conversations").join(&agent).join(format!("{safe_name}.json"));
+                if !file_path.exists() {
+                    return Err(format!("Conversation {id} not found"));
+                }
+                let body = std::fs::read(&file_path).map_err(|e| format!("Read error: {e}"))?;
+                serde_json::from_slice::<Conversation>(&body).map_err(|e| format!("Parse error: {e}"))?
+            }
+        }
     };
     let retention_days = normalize_trash_retention_days(retention_days);
     let trashed_at = chrono::Utc::now();
