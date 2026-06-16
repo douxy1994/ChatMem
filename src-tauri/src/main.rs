@@ -40,7 +40,7 @@ use tauri::Manager;
 use agentswap_claude::ClaudeAdapter;
 use agentswap_codex::CodexAdapter;
 use agentswap_core::adapter::AgentAdapter;
-use agentswap_core::types::{AgentKind, Conversation, ConversationSummary, Message};
+use agentswap_core::types::{AgentKind, Conversation, ConversationSummary};
 use agentswap_gemini::GeminiAdapter;
 use agentswap_opencode::OpenCodeAdapter;
 use agentswap_zcode::{
@@ -236,6 +236,10 @@ struct TrashConversationRecord {
     resume_command: Option<String>,
     remote_backup_deleted: bool,
     remote_backup_path: Option<String>,
+    #[serde(default)]
+    sync_backup_deleted: bool,
+    #[serde(default)]
+    sync_backup_path: Option<String>,
     warnings: Vec<String>,
     conversation: Conversation,
 }
@@ -254,6 +258,8 @@ struct TrashConversationResponse {
     resume_command: Option<String>,
     remote_backup_deleted: bool,
     remote_backup_path: Option<String>,
+    sync_backup_deleted: bool,
+    sync_backup_path: Option<String>,
     warnings: Vec<String>,
 }
 
@@ -815,6 +821,8 @@ fn trash_record_to_response(record: &TrashConversationRecord) -> TrashConversati
         resume_command: record.resume_command.clone(),
         remote_backup_deleted: record.remote_backup_deleted,
         remote_backup_path: record.remote_backup_path.clone(),
+        sync_backup_deleted: record.sync_backup_deleted,
+        sync_backup_path: record.sync_backup_path.clone(),
         warnings: record.warnings.clone(),
     }
 }
@@ -1628,8 +1636,6 @@ async fn sync_webdav_now(
 #[command]
 async fn list_conversations(agent: String) -> Result<Vec<ConversationSummaryResponse>, String> {
     let adapter = get_adapter(&agent)?;
-
-    // Get adapter conversations (local native storage)
     let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut results: Vec<ConversationSummaryResponse> = Vec::new();
 
@@ -1643,7 +1649,7 @@ async fn list_conversations(agent: String) -> Result<Vec<ConversationSummaryResp
     }
 
     // Also include conversations from the memory store (synced from other machines)
-    if let Ok(store) = open_memory_store() {
+    if let Ok(store) = MemoryStore::open_app() {
         if let Ok(store_convs) = store.list_store_conversations(&agent) {
             for (source_id, repo_root, summary, started_at, updated_at, msg_count) in store_convs {
                 if seen_ids.contains(&source_id) {
@@ -1661,6 +1667,41 @@ async fn list_conversations(agent: String) -> Result<Vec<ConversationSummaryResp
                     file_count: 0,
                 });
             }
+        }
+    }
+
+    // Also read directly from sync folder (so conversations are visible without running sync first)
+    let settings = read_app_settings_from_disk().ok().flatten();
+    let sync_folder = settings.as_ref().map(|s| s.sync.sync_folder.clone()).unwrap_or_default();
+    if !sync_folder.is_empty() {
+        let remote = local_sync::read_remote_conversations(std::path::Path::new(&sync_folder));
+        for ((remote_agent, remote_id), (updated_at, body)) in &remote {
+            if remote_agent != &agent {
+                continue;
+            }
+            if seen_ids.contains(remote_id) {
+                continue;
+            }
+            // Extract project_dir and summary from the JSON body
+            let (project_dir, summary, msg_count) = if let Ok(val) = serde_json::from_slice::<serde_json::Value>(body) {
+                let pd = val.get("project_dir").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let sm = val.get("summary").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let mc = val.get("messages").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+                (pd, sm, mc)
+            } else {
+                (String::new(), None, 0)
+            };
+            seen_ids.insert(remote_id.clone());
+            results.push(ConversationSummaryResponse {
+                id: remote_id.clone(),
+                source_agent: agent.clone(),
+                project_dir,
+                created_at: updated_at.clone(),
+                updated_at: updated_at.clone(),
+                summary,
+                message_count: msg_count,
+                file_count: 0,
+            });
         }
     }
 
@@ -1709,38 +1750,28 @@ async fn search_conversations(
 #[command]
 async fn read_conversation(agent: String, id: String) -> Result<ConversationResponse, String> {
     let adapter = get_adapter(&agent)?;
-
-    // Try adapter first (local native storage)
-    let conversation = match adapter.read_conversation(&id) {
+    let mut conversation = match adapter.read_conversation(&id) {
         Ok(mut conv) => {
             conv.project_dir = normalize_project_dir(&conv.project_dir);
             conv
         }
         Err(_) => {
-            // Adapter doesn't have it — try reading from the sync folder
+            // Adapter can't find it — try reading from the sync folder
             let settings = read_app_settings_from_disk()?;
-            let sync_folder = settings
-                .as_ref()
-                .map(|s| s.sync.sync_folder.clone())
-                .unwrap_or_default();
+            let sync_folder = settings.as_ref().map(|s| s.sync.sync_folder.clone()).unwrap_or_default();
             if sync_folder.is_empty() {
-                return Err(format!("Conversation {id} not found in local storage or sync folder"));
+                return Err(format!("Conversation {id} not found"));
             }
             let safe_name = local_sync::id_to_filename(&id);
             let file_path = std::path::PathBuf::from(&sync_folder)
-                .join("conversations")
-                .join(&agent)
-                .join(format!("{safe_name}.json"));
+                .join("conversations").join(&agent).join(format!("{safe_name}.json"));
             if !file_path.exists() {
-                return Err(format!("Conversation {id} not found in local storage or sync folder"));
+                return Err(format!("Conversation {id} not found"));
             }
-            let body = std::fs::read(&file_path)
-                .map_err(|e| format!("Failed to read synced conversation: {e}"))?;
-            serde_json::from_slice::<Conversation>(&body)
-                .map_err(|e| format!("Failed to parse synced conversation: {e}"))?
+            let body = std::fs::read(&file_path).map_err(|e| format!("Read error: {e}"))?;
+            serde_json::from_slice::<Conversation>(&body).map_err(|e| format!("Parse error: {e}"))?
         }
     };
-
     let storage_path = resolve_storage_path(&agent, &id);
     let resume_command = build_resume_command(&agent, &id);
     if let Ok(store) = MemoryStore::open_app() {
@@ -1814,7 +1845,7 @@ async fn migrate_conversation(
 
 #[command]
 async fn delete_conversation(agent: String, id: String) -> Result<(), String> {
-    trash_conversation(agent, id, None, None, None, None, None, None, None, None, None, None)
+    trash_conversation(agent, id, None, None, None, None, None, None, None, None, None)
         .await
         .map(|_| ())
 }
@@ -1832,78 +1863,12 @@ async fn trash_conversation(
     username: Option<String>,
     password: Option<String>,
     delete_sync_backup: Option<bool>,
-    sync_folder: Option<String>,
 ) -> Result<TrashConversationResponse, String> {
-    let (conversation, from_sync) = {
+    let conversation = {
         let adapter = get_adapter(&agent)?;
-        match adapter.read_conversation(&id) {
-            Ok(conv) => (conv, false),
-            Err(_) => {
-                // Try sync folder
-                let mut found: Option<Conversation> = None;
-                let folder = sync_folder.as_deref().unwrap_or("");
-                if !folder.is_empty() {
-                    let safe_name = local_sync::id_to_filename(&id);
-                    let file_path = std::path::PathBuf::from(folder)
-                        .join("conversations")
-                        .join(&agent)
-                        .join(format!("{safe_name}.json"));
-                    if file_path.exists() {
-                        if let Ok(body) = std::fs::read(&file_path) {
-                            found = serde_json::from_slice::<Conversation>(&body).ok();
-                        }
-                    }
-                }
-                // Try memory store
-                if found.is_none() {
-                    if let Ok(store) = open_memory_store() {
-                        if let Ok(Some((repo_root, summary, started_at, updated_at, msgs))) =
-                            store.read_store_conversation(&agent, &id)
-                        {
-                            let messages: Vec<Message> = msgs
-                                .into_iter()
-                                .map(|(role, content, ts)| Message {
-                                    id: uuid::Uuid::new_v4(),
-                                    timestamp: chrono::DateTime::parse_from_rfc3339(&ts)
-                                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                                        .unwrap_or_else(|_| chrono::Utc::now()),
-                                    role: match role.as_str() {
-                                        "assistant" => agentswap_core::types::Role::Assistant,
-                                        "system" => agentswap_core::types::Role::System,
-                                        _ => agentswap_core::types::Role::User,
-                                    },
-                                    content,
-                                    tool_calls: vec![],
-                                    metadata: std::collections::HashMap::new(),
-                                })
-                                .collect();
-                            found = Some(Conversation {
-                                id: id.clone(),
-                                source_agent: agentswap_core::types::AgentKind::Hermes,
-                                project_dir: repo_root,
-                                created_at: chrono::DateTime::parse_from_rfc3339(&started_at)
-                                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                                    .unwrap_or_else(|_| chrono::Utc::now()),
-                                updated_at: chrono::DateTime::parse_from_rfc3339(&updated_at)
-                                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                                    .unwrap_or_else(|_| chrono::Utc::now()),
-                                summary,
-                                messages,
-                                file_changes: vec![],
-                            });
-                        }
-                    }
-                }
-                match found {
-                    Some(conv) => (conv, true),
-                    None => {
-                        return Err(format!(
-                            "Conversation {id} not found in local storage, sync folder, or memory store"
-                        ))
-                    }
-                }
-            }
-        }
+        adapter
+            .read_conversation(&id)
+            .map_err(|error| error.to_string())?
     };
     let retention_days = normalize_trash_retention_days(retention_days);
     let trashed_at = chrono::Utc::now();
@@ -1924,10 +1889,38 @@ async fn trash_conversation(
         resume_command,
         remote_backup_deleted: false,
         remote_backup_path: None,
+        sync_backup_deleted: false,
+        sync_backup_path: None,
         warnings: Vec::new(),
         conversation,
     };
     let record_path = write_trash_record(&record)?;
+
+    // Delete sync backup if requested
+    let should_delete_sync = delete_sync_backup.unwrap_or(false);
+    if should_delete_sync {
+        if let Ok(Some(settings)) = read_app_settings_from_disk() {
+            let sync_folder = settings.sync.sync_folder.clone();
+            if !sync_folder.is_empty() {
+                let safe_name = local_sync::id_to_filename(&id);
+                let sync_file = std::path::PathBuf::from(&sync_folder)
+                    .join("conversations")
+                    .join(&agent)
+                    .join(format!("{safe_name}.json"));
+                if sync_file.exists() {
+                    match fs::remove_file(&sync_file) {
+                        Ok(()) => {
+                            record.sync_backup_deleted = true;
+                            record.sync_backup_path = Some(sync_file.to_string_lossy().to_string());
+                        }
+                        Err(error) => {
+                            record.warnings.push(format!("Failed to delete sync backup: {error}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     let should_delete_remote = delete_remote_backup.unwrap_or(false);
     let mut remote_manifest_update: Option<(reqwest::Client, reqwest::Url, WebDavDeleteSettings)> =
@@ -1963,40 +1956,12 @@ async fn trash_conversation(
         remote_manifest_update = Some((client, remote_url, settings));
     }
 
-    // Delete from OneDrive sync folder if requested
-    let should_delete_sync = delete_sync_backup.unwrap_or(false);
-    if should_delete_sync {
-        if let Some(ref folder) = sync_folder {
-            if !folder.is_empty() {
-                let safe_name = local_sync::id_to_filename(&id);
-                let sync_file = std::path::PathBuf::from(folder)
-                    .join("conversations")
-                    .join(&agent)
-                    .join(format!("{safe_name}.json"));
-                if sync_file.exists() {
-                    if let Err(e) = fs::remove_file(&sync_file) {
-                        record.warnings.push(format!("Failed to delete sync backup: {e}"));
-                    } else {
-                        record.remote_backup_deleted = true;
-                    }
-                }
-            }
-        }
-    }
-
     {
         let adapter = get_adapter(&agent)?;
-        if !from_sync {
-            adapter.delete_conversation(&id).map_err(|error| {
-                let _ = fs::remove_file(&record_path);
-                error.to_string()
-            })?;
-        } else {
-            // Delete from memory store if it came from there
-            if let Ok(store) = open_memory_store() {
-                let _ = store.delete_store_conversation(&agent, &id);
-            }
-        }
+        adapter.delete_conversation(&id).map_err(|error| {
+            let _ = fs::remove_file(&record_path);
+            error.to_string()
+        })?;
     }
 
     if let Some((client, remote_url, settings)) = remote_manifest_update {
@@ -2410,38 +2375,7 @@ fn sync_local_now(folder_path: String) -> Result<local_sync::SyncResult, String>
             }
         }
     }
-    let result = local_sync::bidirectional_sync(&items, &path).map_err(|e| e.to_string())?;
-
-    // Import remote-only conversations into ChatMem memory store
-    if result.downloaded > 0 {
-        if let Ok(store) = open_memory_store() {
-            let remote = local_sync::read_remote_conversations(&path);
-            let mut local_ids: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
-            for item in &items {
-                local_ids.insert((item.agent.clone(), item.id.clone()));
-            }
-            for ((agent, id), (_updated_at, body)) in &remote {
-                // Only import conversations that don't exist locally
-                if local_ids.contains(&(agent.clone(), id.clone())) {
-                    continue;
-                }
-                match serde_json::from_slice::<Conversation>(body) {
-                    Ok(conversation) => {
-                        if let Err(e) = sync_conversation_into_store(
-                            &store, agent, &conversation,
-                        ) {
-                            eprintln!("Warning: failed to import synced {agent}/{id}: {e}");
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Warning: failed to deserialize synced {agent}/{id}: {e}");
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(result)
+    local_sync::bidirectional_sync(&items, &path).map_err(|e| e.to_string())
 }
 
 fn run_mcp_stdio() -> anyhow::Result<()> {
