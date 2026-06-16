@@ -133,7 +133,7 @@ type TrashConfirmState = {
 } | null;
 
 type DeleteConfirmState = {
-  conversation: Pick<ConversationSummary, "id" | "source_agent" | "summary"> | Pick<Conversation, "id" | "source_agent" | "summary">;
+  pending: true;  // Just a flag to show the confirmation dialog
 } | null;
 
 type EmptyTrashConfirmState = {
@@ -3420,7 +3420,7 @@ function App() {
             disabled={deletingConversationId === conversation.id}
             onClick={(event) => {
               event.stopPropagation();
-              setDeleteConfirm({ conversation });
+              void handleDeleteConversation(conversation);
             }}
           >
             {shell.delete}
@@ -4973,7 +4973,7 @@ function App() {
             <button
               type="button"
               className="btn btn-danger"
-              onClick={() => void confirmMoveConversationsToTrash()}
+              onClick={() => setDeleteConfirm({ pending: true })}
               disabled={trashConfirm.busy}
             >
               {trashConfirm.busy ? shell.movingToTrash : shell.moveToTrash}
@@ -4985,11 +4985,11 @@ function App() {
   };
 
   const renderDeleteConfirmModal = () => {
-    if (!deleteConfirm) {
+    if (!deleteConfirm || !trashConfirm) {
       return null;
     }
 
-    const title = normalizeConversationTitle(deleteConfirm.conversation.summary) || deleteConfirm.conversation.id;
+    const previewTargets = trashConfirm.targets.slice(0, 4);
 
     return (
       <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
@@ -5005,10 +5005,17 @@ function App() {
             <p>{shell.confirmDeleteBody}</p>
 
             <div className="trash-confirm-list">
-              <div className="trash-confirm-item">
-                <strong>{title}</strong>
-                <span>{deleteConfirm.conversation.source_agent}</span>
-              </div>
+              {previewTargets.map((target) => (
+                <div key={`${target.source_agent}-${target.id}`} className="trash-confirm-item">
+                  <strong>{normalizeConversationTitle(target.summary) || target.id}</strong>
+                  <span>{target.source_agent}</span>
+                </div>
+              ))}
+              {trashConfirm.targets.length > previewTargets.length ? (
+                <div className="trash-confirm-more">
+                  +{trashConfirm.targets.length - previewTargets.length}
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="modal-actions">
@@ -5022,9 +5029,9 @@ function App() {
             <button
               type="button"
               className="btn btn-danger"
-              onClick={async () => {
+              onClick={() => {
                 setDeleteConfirm(null);
-                await handleDeleteConversation(deleteConfirm.conversation);
+                void confirmMoveConversationsToTrash();
               }}
             >
               {shell.confirmDeleteConfirm}
