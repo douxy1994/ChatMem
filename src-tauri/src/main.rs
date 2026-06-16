@@ -40,7 +40,7 @@ use tauri::Manager;
 use agentswap_claude::ClaudeAdapter;
 use agentswap_codex::CodexAdapter;
 use agentswap_core::adapter::AgentAdapter;
-use agentswap_core::types::{AgentKind, Conversation, ConversationSummary};
+use agentswap_core::types::{AgentKind, Conversation, ConversationSummary, Message};
 use agentswap_gemini::GeminiAdapter;
 use agentswap_opencode::OpenCodeAdapter;
 use agentswap_zcode::{
@@ -1839,24 +1839,69 @@ async fn trash_conversation(
         match adapter.read_conversation(&id) {
             Ok(conv) => (conv, false),
             Err(_) => {
-                // Adapter doesn't have it — try reading from sync folder
+                // Try sync folder
+                let mut found: Option<Conversation> = None;
                 let folder = sync_folder.as_deref().unwrap_or("");
-                if folder.is_empty() {
-                    return Err(format!("Conversation {id} not found in local storage or sync folder"));
+                if !folder.is_empty() {
+                    let safe_name = local_sync::id_to_filename(&id);
+                    let file_path = std::path::PathBuf::from(folder)
+                        .join("conversations")
+                        .join(&agent)
+                        .join(format!("{safe_name}.json"));
+                    if file_path.exists() {
+                        if let Ok(body) = std::fs::read(&file_path) {
+                            found = serde_json::from_slice::<Conversation>(&body).ok();
+                        }
+                    }
                 }
-                let safe_name = local_sync::id_to_filename(&id);
-                let file_path = std::path::PathBuf::from(folder)
-                    .join("conversations")
-                    .join(&agent)
-                    .join(format!("{safe_name}.json"));
-                if !file_path.exists() {
-                    return Err(format!("Conversation {id} not found in local storage or sync folder"));
+                // Try memory store
+                if found.is_none() {
+                    if let Ok(store) = open_memory_store() {
+                        if let Ok(Some((repo_root, summary, started_at, updated_at, msgs))) =
+                            store.read_store_conversation(&agent, &id)
+                        {
+                            let messages: Vec<Message> = msgs
+                                .into_iter()
+                                .map(|(role, content, ts)| Message {
+                                    id: uuid::Uuid::new_v4(),
+                                    timestamp: chrono::DateTime::parse_from_rfc3339(&ts)
+                                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                                        .unwrap_or_else(|_| chrono::Utc::now()),
+                                    role: match role.as_str() {
+                                        "assistant" => agentswap_core::types::Role::Assistant,
+                                        "system" => agentswap_core::types::Role::System,
+                                        _ => agentswap_core::types::Role::User,
+                                    },
+                                    content,
+                                    tool_calls: vec![],
+                                    metadata: std::collections::HashMap::new(),
+                                })
+                                .collect();
+                            found = Some(Conversation {
+                                id: id.clone(),
+                                source_agent: agentswap_core::types::AgentKind::Hermes,
+                                project_dir: repo_root,
+                                created_at: chrono::DateTime::parse_from_rfc3339(&started_at)
+                                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                                    .unwrap_or_else(|_| chrono::Utc::now()),
+                                updated_at: chrono::DateTime::parse_from_rfc3339(&updated_at)
+                                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                                    .unwrap_or_else(|_| chrono::Utc::now()),
+                                summary,
+                                messages,
+                                file_changes: vec![],
+                            });
+                        }
+                    }
                 }
-                let body = std::fs::read(&file_path)
-                    .map_err(|e| format!("Failed to read synced conversation: {e}"))?;
-                let conv = serde_json::from_slice::<Conversation>(&body)
-                    .map_err(|e| format!("Failed to parse synced conversation: {e}"))?;
-                (conv, true) // true = from sync folder, skip adapter delete
+                match found {
+                    Some(conv) => (conv, true),
+                    None => {
+                        return Err(format!(
+                            "Conversation {id} not found in local storage, sync folder, or memory store"
+                        ))
+                    }
+                }
             }
         }
     };
@@ -1946,6 +1991,11 @@ async fn trash_conversation(
                 let _ = fs::remove_file(&record_path);
                 error.to_string()
             })?;
+        } else {
+            // Delete from memory store if it came from there
+            if let Ok(store) = open_memory_store() {
+                let _ = store.delete_store_conversation(&agent, &id);
+            }
         }
     }
 
