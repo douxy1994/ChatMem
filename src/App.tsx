@@ -35,6 +35,7 @@ import {
 } from "./settings/storage";
 import { installAvailableUpdate, runUpdateCheck, type UpdateState } from "./updater/updater";
 import { formatDateTime, formatDistanceToNow } from "./utils/dateUtils";
+import { buildContinuationBriefPrompt } from "./utils/continuationBrief";
 import {
   normalizeConversationTitle,
   truncateSidebarTitle,
@@ -1520,23 +1521,35 @@ function App() {
   const availableHandoffTargets = AGENT_OPTIONS.map((agent) => agent.value).filter(
     (agent) => agent !== selectedAgent,
   );
+  const latestActiveCheckpoint =
+    checkpoints.find((checkpoint) => checkpoint.status === "active") ?? checkpoints[0];
+  const latestPendingHandoff =
+    handoffs.find((handoff) => !handoff.consumed_at) ?? handoffs[0];
   const lowTokenContinuationPrompt = useMemo(() => {
     if (!activeRepoRoot || !selectedConversation) {
       return null;
     }
 
-    const latestCheckpoint =
-      checkpoints.find((checkpoint) => checkpoint.status === "active") ?? checkpoints[0];
-    const latestHandoff =
-      handoffs.find((handoff) => !handoff.consumed_at) ?? handoffs[0];
-
     return buildLowTokenContinuationPrompt({
       repoRoot: activeRepoRoot,
       conversation: selectedConversation,
-      checkpointId: latestCheckpoint?.checkpoint_id,
-      handoffId: latestHandoff?.handoff_id,
+      checkpointId: latestActiveCheckpoint?.checkpoint_id,
+      handoffId: latestPendingHandoff?.handoff_id,
     });
-  }, [activeRepoRoot, checkpoints, handoffs, selectedConversation]);
+  }, [activeRepoRoot, latestActiveCheckpoint, latestPendingHandoff, selectedConversation]);
+
+  const continuationBriefPrompt = useMemo(() => {
+    if (!activeRepoRoot || !selectedConversation) {
+      return null;
+    }
+
+    return buildContinuationBriefPrompt({
+      repoRoot: activeRepoRoot,
+      conversation: selectedConversation,
+      checkpointId: latestActiveCheckpoint?.checkpoint_id,
+      handoffId: latestPendingHandoff?.handoff_id,
+    });
+  }, [activeRepoRoot, latestActiveCheckpoint, latestPendingHandoff, selectedConversation]);
 
   const syncNativeWindowState = useCallback(async () => {
     try {
@@ -2229,7 +2242,7 @@ function App() {
 
   const handleCopy = async (target: CopyTarget, value: string | null | undefined) => {
     if (!value) {
-      return;
+      return false;
     }
 
     try {
@@ -2238,9 +2251,11 @@ function App() {
       }
       await navigator.clipboard.writeText(value);
       setCopyState({ target, status: "success" });
+      return true;
     } catch (error) {
       console.error(`Failed to copy ${target}:`, error);
       setCopyState({ target, status: "error" });
+      return false;
     } finally {
       window.setTimeout(() => {
         setCopyState((current) =>
@@ -2248,6 +2263,23 @@ function App() {
         );
       }, COPY_RESET_DELAY_MS);
     }
+  };
+
+  const handleCopyContinuationBriefFromMigrate = async () => {
+    const copied = await handleCopy("continuation", continuationBriefPrompt);
+    if (!copied) {
+      setAppNotice({
+        kind: "error",
+        message: locale === "en" ? "Could not copy continuation card" : "继续卡片复制失败",
+      });
+      return;
+    }
+
+    setAppNotice({
+      kind: "success",
+      message: locale === "en" ? "Continuation card copied" : "继续卡片已复制",
+    });
+    setShowMigrateModal(false);
   };
 
   const handleVerifyWebDavServer = async ({
@@ -4574,11 +4606,11 @@ function App() {
     const releaseItems = [
       {
         icon: "spark" as const,
-        title: locale === "en" ? "Low-token continuation prompts" : "\u7701 token \u7eed\u63a5\u63d0\u793a",
+        title: locale === "en" ? "Continuation briefs" : "\u7ee7\u7eed\u5361\u7247",
         body:
           locale === "en"
-            ? "Conversation toolbars can copy a compact ChatMem prompt that starts from project context, checkpoints, and focused evidence windows instead of raw transcripts."
-            : "\u5bf9\u8bdd\u5de5\u5177\u680f\u53ef\u4ee5\u590d\u5236\u7b80\u77ed\u7684 ChatMem \u7eed\u63a5\u63d0\u793a\uff0c\u5148\u8bfb\u9879\u76ee\u4e0a\u4e0b\u6587\u3001\u68c0\u67e5\u70b9\u548c\u805a\u7126\u8bc1\u636e\u7a97\u53e3\uff0c\u800c\u4e0d\u662f\u539f\u59cb transcript\u3002",
+            ? "The Migrate dialog now offers summary-style migration: copy a source-backed continuation card with the active workline, latest completed action, canonical files, obsolete context, and focused protocol."
+            : "Migrate \u5f39\u7a97\u73b0\u5728\u65b0\u589e\u603b\u7ed3\u5f0f\u8fc1\u79fb\uff1a\u590d\u5236\u6709\u6765\u6e90\u7684\u7ee7\u7eed\u5361\u7247\uff0c\u5305\u542b\u5f53\u524d\u5de5\u4f5c\u7ebf\u3001\u6700\u65b0\u5b8c\u6210\u52a8\u4f5c\u3001\u6743\u5a01\u6587\u4ef6\u3001\u8fc7\u671f\u80cc\u666f\u548c\u805a\u7126\u7eed\u63a5\u534f\u8bae\u3002",
       },
       {
         icon: "trash" as const,
@@ -4731,12 +4763,12 @@ function App() {
         <section className="about-feature-section" aria-labelledby="about-release-title">
           <div className="about-section-heading">
             <h2 id="about-release-title">
-              {locale === "en" ? "What changed in 1.1.2" : "1.1.2 更新内容"}
+              {locale === "en" ? "What changed in 1.2.1" : "1.2.1 更新内容"}
             </h2>
             <p className="settings-helper">
               {locale === "en"
-                ? "This release adds a compact continuation prompt while keeping the Trash controls reachable and the workspace responsive."
-                : "\u8fd9\u4e00\u7248\u589e\u52a0\u7701 token \u7eed\u63a5\u63d0\u793a\uff0c\u540c\u65f6\u4fdd\u6301\u5783\u573e\u7bb1\u64cd\u4f5c\u53ef\u70b9\u3001\u5de5\u4f5c\u533a\u54cd\u5e94\u5f0f\u53ef\u7528\u3002"}
+                ? "This release adds evaluated continuation briefs while keeping the 1.2.x delete, sync, UI, and ZCode improvements intact."
+                : "\u8fd9\u4e00\u7248\u589e\u52a0\u5df2\u8bc4\u6d4b\u7684\u7ee7\u7eed\u5361\u7247\uff0c\u540c\u65f6\u4fdd\u7559 1.2.x \u7684\u5220\u9664\u3001\u540c\u6b65\u3001UI \u548c ZCode \u6539\u8fdb\u3002"}
             </p>
           </div>
           <div className="about-feature-list">
@@ -5913,6 +5945,8 @@ function App() {
         <MigrateModal
           sourceAgent={selectedAgent}
           onMigrate={handleMigrate}
+          continuationBriefAvailable={Boolean(continuationBriefPrompt)}
+          onCopyContinuationBrief={() => void handleCopyContinuationBriefFromMigrate()}
           onClose={() => setShowMigrateModal(false)}
         />
       ) : null}
