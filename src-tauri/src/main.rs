@@ -189,6 +189,20 @@ struct SyncSettingsPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct FavoriteConversationPayload {
+    id: String,
+    source_agent: String,
+    #[serde(default)]
+    project_dir: String,
+    #[serde(default)]
+    created_at: String,
+    #[serde(default)]
+    updated_at: String,
+    summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AppSettingsPayload {
     locale: String,
     #[serde(default = "default_font_family")]
@@ -203,6 +217,12 @@ struct AppSettingsPayload {
     auto_backup_enabled: bool,
     #[serde(default = "default_auto_backup_interval")]
     auto_backup_interval_minutes: i64,
+    #[serde(default)]
+    machine_group_names: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    machine_group_overrides: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    favorite_conversations: std::collections::HashMap<String, FavoriteConversationPayload>,
 }
 
 fn default_font_family() -> String {

@@ -59,6 +59,15 @@ export type SyncSettings = {
   syncFolder: string;
 };
 
+export type FavoriteConversationSnapshot = {
+  id: string;
+  sourceAgent: string;
+  projectDir: string;
+  createdAt: string;
+  updatedAt: string;
+  summary: string | null;
+};
+
 export type AppSettings = {
   locale: Locale;
   fontFamily: AppFontFamily;
@@ -70,6 +79,7 @@ export type AppSettings = {
   autoBackupIntervalMinutes: number;
   machineGroupNames: Record<string, string>;
   machineGroupOverrides: Record<string, string>;
+  favoriteConversations: Record<string, FavoriteConversationSnapshot>;
 };
 
 export const SETTINGS_STORAGE_KEY = "chatmem.settings";
@@ -96,6 +106,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoBackupIntervalMinutes: 30,
   machineGroupNames: {},
   machineGroupOverrides: {},
+  favoriteConversations: {},
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -156,6 +167,43 @@ function splitWebDavUrl(value: unknown): Pick<SyncSettings, "webdavScheme" | "we
   }
 }
 
+function normalizeFavoriteConversations(value: unknown): Record<string, FavoriteConversationSnapshot> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, rawSnapshot]) => {
+      if (!isRecord(rawSnapshot)) {
+        return [];
+      }
+
+      const snapshot = rawSnapshot as Partial<FavoriteConversationSnapshot>;
+      if (
+        typeof key !== "string" ||
+        typeof snapshot.id !== "string" ||
+        typeof snapshot.sourceAgent !== "string"
+      ) {
+        return [];
+      }
+
+      return [
+        [
+          key,
+          {
+            id: snapshot.id,
+            sourceAgent: snapshot.sourceAgent,
+            projectDir: typeof snapshot.projectDir === "string" ? snapshot.projectDir : "",
+            createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : "",
+            updatedAt: typeof snapshot.updatedAt === "string" ? snapshot.updatedAt : "",
+            summary: typeof snapshot.summary === "string" ? snapshot.summary : null,
+          },
+        ],
+      ];
+    }),
+  );
+}
+
 export function normalizeAppSettings(value: unknown): AppSettings {
   if (!isRecord(value)) {
     return DEFAULT_SETTINGS;
@@ -196,6 +244,7 @@ export function normalizeAppSettings(value: unknown): AppSettings {
           ),
         )
       : {},
+    favoriteConversations: normalizeFavoriteConversations(parsed.favoriteConversations),
   };
 }
 

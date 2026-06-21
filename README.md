@@ -6,7 +6,25 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 
 ## 当前版本
 
-最新版本：`v1.2.1`
+最新版本：`v1.2.2`
+
+### v1.2.2 重点更新
+
+**收藏夹**
+- 对话列表新增星标按钮，可将重要对话加入收藏夹。
+- 左侧底部新增“收藏夹”入口，收藏夹内容在右侧工作区显示，行为和垃圾箱一致，不替换左侧对话列表。
+- 收藏夹保存轻量对话快照，不复制完整对话内容，也不改变原对话存储位置。
+- 收藏夹保留原有项目路径、来源、更新时间和标题信息，方便后续快速接续。
+
+**界面调整**
+- 左侧底部移除“关于我们”入口，底部只保留“收藏夹 / 垃圾箱 / 设置”和版本号。
+- 底部三个入口按钮恢复为和版本号同一行对齐，保持 v1.2.1 的底部高度。
+- 底部入口按内容宽度分配，收藏数量不再挤压“收藏夹”文字。
+- 设置页返回按钮移到左下角浮窗，复用首页收起边栏按钮的视觉样式。
+
+**开发文档**
+- Release 说明见 `docs/releases/v1.2.2.md`。
+- Windows 端同功能实现指南见 `docs/windows-v1.2.2-favorites-implementation.md`。
 
 ### v1.2.1 重点更新
 
@@ -116,7 +134,7 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 
 正式下载入口：
 
-- [GitHub Releases](https://github.com/Rimagination/ChatMem/releases)
+- [GitHub Releases](https://github.com/douxy1994/ChatMem/releases)
 
 Windows 推荐下载：
 
@@ -254,7 +272,7 @@ npm run tauri build
 应用内更新依赖 Tauri updater，更新源指向：
 
 ```text
-https://github.com/Rimagination/ChatMem/releases/latest/download/latest.json
+https://github.com/douxy1994/ChatMem/releases/latest/download/latest.json
 ```
 
 发布前需要在 GitHub 仓库里配置：

@@ -101,6 +101,7 @@ type SettingsPanelProps = {
   open: boolean;
   title: string;
   closeLabel: string;
+  showHeaderCloseButton?: boolean;
   languageLabel: string;
   locale: Locale;
   fontFamily: AppFontFamily;
@@ -194,6 +195,7 @@ export default function SettingsPanel({
   open,
   title,
   closeLabel,
+  showHeaderCloseButton = true,
   languageLabel,
   locale,
   fontFamily,
@@ -535,9 +537,11 @@ export default function SettingsPanel({
     >
         <div className="settings-panel-header">
           <h3 id="settings-title">{title}</h3>
-          <button type="button" className="toolbar-button" onClick={onClose}>
-            {closeLabel}
-          </button>
+          {showHeaderCloseButton ? (
+            <button type="button" className="toolbar-button" onClick={onClose}>
+              {closeLabel}
+            </button>
+          ) : null}
         </div>
 
         <div className="settings-compact-grid" aria-label={isEnglish ? "Compact settings" : "常用设置"}>

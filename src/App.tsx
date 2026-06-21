@@ -32,6 +32,7 @@ import {
   updateSettings,
   type AppFontFamily,
   type AppSettings,
+  type FavoriteConversationSnapshot,
 } from "./settings/storage";
 import { installAvailableUpdate, runUpdateCheck, type UpdateState } from "./updater/updater";
 import { formatDateTime, formatDistanceToNow } from "./utils/dateUtils";
@@ -244,6 +245,9 @@ type ShellCopy = {
   navAria: string;
   projectSection: string;
   chatSection: string;
+  favorites: string;
+  favoriteConversation: (title: string) => string;
+  unfavoriteConversation: (title: string) => string;
   settings: string;
   aboutChatMem: string;
   continueTitle: string;
@@ -261,6 +265,7 @@ type ShellCopy = {
   recentTransfers: string;
   noProgressTitle: string;
   noProgressBody: string;
+  noFavoritesBody: string;
   fileLocation: string;
   actionsLabel: string;
   copyLocation: string;
@@ -531,6 +536,34 @@ function getProjectLabel(projectDir: string) {
   return segments[segments.length - 1] || projectDir;
 }
 
+function conversationToFavoriteSnapshot(
+  conversation: Pick<ConversationSummary, "id" | "source_agent" | "project_dir" | "created_at" | "updated_at" | "summary">,
+): FavoriteConversationSnapshot {
+  return {
+    id: conversation.id,
+    sourceAgent: conversation.source_agent,
+    projectDir: getConversationProjectDir(conversation),
+    createdAt: conversation.created_at,
+    updatedAt: conversation.updated_at,
+    summary: conversation.summary ?? null,
+  };
+}
+
+function favoriteSnapshotToConversationSummary(
+  snapshot: FavoriteConversationSnapshot,
+): ConversationSummary {
+  return {
+    id: snapshot.id,
+    source_agent: snapshot.sourceAgent,
+    project_dir: snapshot.projectDir,
+    created_at: snapshot.createdAt,
+    updated_at: snapshot.updatedAt,
+    summary: snapshot.summary,
+    message_count: 0,
+    file_count: 0,
+  };
+}
+
 function detectMachineId(projectDir: string): string {
   const normalized = projectDir.replace(/\\/g, "/");
   // Windows: C:/Users/xxx
@@ -697,6 +730,23 @@ function getZCodeConversationCli(
   };
 }
 
+function getTopLevelAgent(sourceAgent: string): AgentType {
+  const normalizedAgent = sourceAgent.toLowerCase();
+  if (normalizedAgent.startsWith("zcode")) {
+    return "zcode";
+  }
+  if (
+    normalizedAgent === "claude" ||
+    normalizedAgent === "codex" ||
+    normalizedAgent === "gemini" ||
+    normalizedAgent === "opencode" ||
+    normalizedAgent === "hermes"
+  ) {
+    return normalizedAgent;
+  }
+  return "claude";
+}
+
 function isRootProjectPlaceholder(projectDir: string) {
   const normalized = normalizeProjectPath(projectDir);
   return normalized === "/" || /^[a-zA-Z]:\/?$/.test(normalized);
@@ -805,6 +855,9 @@ function getShellCopy(locale: Locale): ShellCopy {
       navAria: "Primary navigation",
       projectSection: "Projects",
       chatSection: "Chats",
+      favorites: "Favorites",
+      favoriteConversation: (title) => `Favorite ${title}`,
+      unfavoriteConversation: (title) => `Remove ${title} from Favorites`,
       settings: "Settings",
       aboutChatMem: "About us",
       continueTitle: "Continue Work",
@@ -822,6 +875,7 @@ function getShellCopy(locale: Locale): ShellCopy {
       recentTransfers: "Recent Transfers",
       noProgressTitle: "No recoverable progress yet",
       noProgressBody: "Choose a conversation from the left to continue.",
+      noFavoritesBody: "Star important conversations to keep them available here.",
       fileLocation: "Conversation file location",
       actionsLabel: "Actions",
       copyLocation: "Copy location",
@@ -965,6 +1019,9 @@ function getShellCopy(locale: Locale): ShellCopy {
     navAria: "主导航",
     projectSection: "项目",
     chatSection: "对话",
+    favorites: "收藏夹",
+    favoriteConversation: (title) => `收藏 ${title}`,
+    unfavoriteConversation: (title) => `取消收藏 ${title}`,
     settings: "设置",
     aboutChatMem: "关于我们",
     continueTitle: "继续工作",
@@ -982,6 +1039,7 @@ function getShellCopy(locale: Locale): ShellCopy {
     recentTransfers: "最近移交",
     noProgressTitle: "还没有可恢复的进度",
     noProgressBody: "先从左侧选择一段对话开始。",
+    noFavoritesBody: "收藏重要对话后，它们会集中显示在这里。",
     fileLocation: "对话文件位置",
     actionsLabel: "操作",
     copyLocation: "复制位置",
@@ -1181,11 +1239,13 @@ function WindowButtonIcon({
     | "minimize"
     | "maximize"
     | "close"
+    | "back"
     | "sidebar"
     | "collapseAll"
     | "restoreExpansion"
     | "organize"
     | "bulkSelect"
+    | "favorite"
     | "trash"
     | "settings"
     | "help"
@@ -1223,6 +1283,14 @@ function WindowButtonIcon({
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <path d="M4 4l8 8" />
         <path d="M12 4l-8 8" />
+      </svg>
+    );
+  }
+
+  if (type === "back") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M10 4 6 8l4 4" />
       </svg>
     );
   }
@@ -1281,6 +1349,14 @@ function WindowButtonIcon({
         <path d="M9 5h4" />
         <rect x="3" y="9" width="4" height="4" rx="0.8" />
         <path d="M9 11h4" />
+      </svg>
+    );
+  }
+
+  if (type === "favorite") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="m8 2.8 1.5 3 3.3.5-2.4 2.3.6 3.3L8 10.3 5 11.9l.6-3.3-2.4-2.3 3.3-.5Z" />
       </svg>
     );
   }
@@ -1442,6 +1518,7 @@ function App() {
   const [showMigrateModal, setShowMigrateModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [memoryDrawerOpen, setMemoryDrawerOpen] = useState(false);
@@ -1603,6 +1680,7 @@ function App() {
     setSelectedConversation(null);
     setShowSettings(false);
     setShowTrash(false);
+    setShowFavorites(false);
     setShowAbout(false);
     setCopyState({ target: null, status: "idle" });
     setBulkSelectionMode(false);
@@ -1999,6 +2077,7 @@ function App() {
     }
     setShowSettings(false);
     setShowTrash(false);
+    setShowFavorites(false);
     setShowAbout(false);
     const cachedConversation = conversationDetailCacheRef.current[cacheKey];
     if (cachedConversation) {
@@ -2030,6 +2109,15 @@ function App() {
         setDetailLoading(false);
       }
     }
+  };
+
+  const handleOpenConversation = async (conversation: ConversationSummary) => {
+    const agent = getTopLevelAgent(conversation.source_agent);
+    if (agent !== selectedAgent) {
+      setSelectedAgent(agent);
+      await loadConversations("", agent);
+    }
+    await loadConversationDetail(conversation.id, agent);
   };
 
   const loadTrashConversations = async () => {
@@ -2098,6 +2186,25 @@ function App() {
     } finally {
       setDetailLoading(false);
     }
+  };
+
+  const handleToggleFavoriteConversation = (
+    conversation: Pick<
+      ConversationSummary,
+      "id" | "source_agent" | "project_dir" | "created_at" | "updated_at" | "summary"
+    >,
+  ) => {
+    const conversationKey = getConversationKey(conversation);
+    const nextFavorites = { ...appSettings.favoriteConversations };
+
+    if (nextFavorites[conversationKey]) {
+      delete nextFavorites[conversationKey];
+    } else {
+      nextFavorites[conversationKey] = conversationToFavoriteSnapshot(conversation);
+    }
+
+    const nextSettings = updateSettings({ favoriteConversations: nextFavorites });
+    setAppSettings(nextSettings);
   };
 
   const moveConversationsToTrash = (
@@ -2743,6 +2850,17 @@ function App() {
     });
   }, [projectFilters, sortedConversations]);
 
+  const favoriteConversations = useMemo(
+    () =>
+      sortConversations(
+        Object.values(appSettings.favoriteConversations).map(favoriteSnapshotToConversationSummary),
+        librarySort,
+      ),
+    [appSettings.favoriteConversations, librarySort],
+  );
+
+  const displayedConversations = filteredConversations;
+
   const selectedConversationKeySet = useMemo(
     () => new Set(selectedConversationKeys),
     [selectedConversationKeys],
@@ -2750,27 +2868,27 @@ function App() {
 
   const selectedConversationsForBulkAction = useMemo(
     () =>
-      filteredConversations.filter((conversation) =>
+      displayedConversations.filter((conversation) =>
         selectedConversationKeySet.has(getConversationKey(conversation)),
       ),
-    [filteredConversations, selectedConversationKeySet],
+    [displayedConversations, selectedConversationKeySet],
   );
 
   const selectedConversationCount = selectedConversationsForBulkAction.length;
   const allVisibleConversationsSelected =
-    filteredConversations.length > 0 &&
-    filteredConversations.every((conversation) =>
+    displayedConversations.length > 0 &&
+    displayedConversations.every((conversation) =>
       selectedConversationKeySet.has(getConversationKey(conversation)),
     );
 
   const projectConversations = useMemo(
-    () => filteredConversations.filter(isProjectConversation),
-    [filteredConversations],
+    () => displayedConversations.filter(isProjectConversation),
+    [displayedConversations],
   );
 
   const chatConversations = useMemo(
-    () => filteredConversations.filter((conversation) => !isProjectConversation(conversation)),
-    [filteredConversations],
+    () => displayedConversations.filter((conversation) => !isProjectConversation(conversation)),
+    [displayedConversations],
   );
 
   const repoLibraryRecords = useMemo(() => {
@@ -3316,7 +3434,7 @@ function App() {
   };
 
   const handleSelectVisibleConversations = () => {
-    const visibleKeys = filteredConversations.map(getConversationKey);
+    const visibleKeys = displayedConversations.map(getConversationKey);
     setSelectedConversationKeys((current) => {
       const next = new Set(current);
       visibleKeys.forEach((key) => next.add(key));
@@ -3392,6 +3510,7 @@ function App() {
     const conversationKey = getConversationKey(conversation);
     const isBulkSelected = selectedConversationKeySet.has(conversationKey);
     const isMoveSelected = selectedConvKeysForMove.has(conversationKey);
+    const isFavorite = Boolean(appSettings.favoriteConversations[conversationKey]);
     const projectDisplay = getConversationProjectDisplay(conversation);
     const inAnySelectMode = bulkSelectionMode || mgSelectMode;
 
@@ -3431,7 +3550,7 @@ function App() {
               ? handleToggleConversationSelection(conversation)
               : mgSelectMode
                 ? toggleConvForMove(conversationKey)
-                : void loadConversationDetail(conversation.id)
+                : void handleOpenConversation(conversation)
           }
         >
           <div className="conversation-item-row">
@@ -3446,6 +3565,29 @@ function App() {
             <div className="conversation-item-time">{formatDistanceToNow(conversation.updated_at)}</div>
           </div>
         </button>
+        {!inAnySelectMode ? (
+          <button
+            type="button"
+            className={`conversation-item-favorite ${isFavorite ? "is-active" : ""}`}
+            aria-label={
+              isFavorite
+                ? shell.unfavoriteConversation(title)
+                : shell.favoriteConversation(title)
+            }
+            aria-pressed={isFavorite}
+            title={
+              isFavorite
+                ? shell.unfavoriteConversation(title)
+                : shell.favoriteConversation(title)
+            }
+            onClick={(event) => {
+              event.stopPropagation();
+              handleToggleFavoriteConversation(conversation);
+            }}
+          >
+            <WindowButtonIcon type="favorite" />
+          </button>
+        ) : null}
         {!inAnySelectMode ? (
           <button
             type="button"
@@ -3502,7 +3644,7 @@ function App() {
   };
 
   const renderRecentTasks = () => {
-    if (filteredConversations.length === 0) {
+    if (displayedConversations.length === 0) {
       return (
         <div className="inline-empty-state">
           <div className="inline-empty-title">{shell.noProgressTitle}</div>
@@ -3513,12 +3655,12 @@ function App() {
 
     return (
       <div className="task-list">
-        {filteredConversations.slice(0, 5).map((conversation) => (
+        {displayedConversations.slice(0, 5).map((conversation) => (
           <button
             key={`recent-${conversation.id}`}
             type="button"
             className="task-list-item"
-            onClick={() => void loadConversationDetail(conversation.id)}
+            onClick={() => void handleOpenConversation(conversation)}
           >
             <div>
               <strong>{normalizeConversationTitle(conversation.summary) || conversation.id}</strong>
@@ -4605,6 +4747,14 @@ function App() {
   const renderAboutWorkspace = () => {
     const releaseItems = [
       {
+        icon: "favorite" as const,
+        title: locale === "en" ? "Favorites" : "\u6536\u85cf\u5939",
+        body:
+          locale === "en"
+            ? "Star important conversations and reopen them from a dedicated Favorites entry, even when they come from different sources."
+            : "\u53ef\u4ee5\u7ed9\u91cd\u8981\u5bf9\u8bdd\u52a0\u661f\u6807\uff0c\u518d\u4ece\u72ec\u7acb\u7684\u6536\u85cf\u5939\u5165\u53e3\u8de8\u6765\u6e90\u6253\u5f00\u3002",
+      },
+      {
         icon: "spark" as const,
         title: locale === "en" ? "Continuation briefs" : "\u7ee7\u7eed\u5361\u7247",
         body:
@@ -4763,12 +4913,12 @@ function App() {
         <section className="about-feature-section" aria-labelledby="about-release-title">
           <div className="about-section-heading">
             <h2 id="about-release-title">
-              {locale === "en" ? "What changed in 1.2.1" : "1.2.1 更新内容"}
+              {locale === "en" ? "What changed in 1.2.2" : "1.2.2 更新内容"}
             </h2>
             <p className="settings-helper">
               {locale === "en"
-                ? "This release adds evaluated continuation briefs while keeping the 1.2.x delete, sync, UI, and ZCode improvements intact."
-                : "\u8fd9\u4e00\u7248\u589e\u52a0\u5df2\u8bc4\u6d4b\u7684\u7ee7\u7eed\u5361\u7247\uff0c\u540c\u65f6\u4fdd\u7559 1.2.x \u7684\u5220\u9664\u3001\u540c\u6b65\u3001UI \u548c ZCode \u6539\u8fdb\u3002"}
+                ? "This release adds Favorites while keeping continuation briefs, delete, sync, UI, and ZCode improvements intact."
+                : "\u8fd9\u4e00\u7248\u65b0\u589e\u6536\u85cf\u5939\uff0c\u540c\u65f6\u4fdd\u7559\u7ee7\u7eed\u5361\u7247\u3001\u5220\u9664\u3001\u540c\u6b65\u3001UI \u548c ZCode \u6539\u8fdb\u3002"}
             </p>
           </div>
           <div className="about-feature-list">
@@ -4897,6 +5047,64 @@ function App() {
                 >
                   {isRestoring ? shell.restoring : shell.restore}
                 </button>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderFavoritesWorkspace = () => (
+    <div className="trash-workspace-page favorites-workspace-page">
+      <header className="trash-page-header">
+        <div>
+          <h1>{shell.favorites}</h1>
+          <p>{shell.noFavoritesBody}</p>
+        </div>
+      </header>
+
+      {favoriteConversations.length === 0 ? (
+        <div className="empty-state empty-state-page">
+          <div className="empty-state-icon">
+            <WindowButtonIcon type="favorite" />
+          </div>
+          <h2>{shell.favorites}</h2>
+          <div className="empty-state-text">{shell.noFavoritesBody}</div>
+        </div>
+      ) : (
+        <div className="trash-card-list">
+          {favoriteConversations.map((conversation) => {
+            const title = normalizeConversationTitle(conversation.summary) || conversation.id;
+            const projectDisplay = getConversationProjectDisplay(conversation);
+            return (
+              <article key={getConversationKey(conversation)} className="trash-card favorite-card">
+                <div className="trash-card-main">
+                  <div>
+                    <span className="trash-card-agent">{conversation.source_agent}</span>
+                    <h3 title={title}>{title}</h3>
+                  </div>
+                  <p title={conversation.project_dir || projectDisplay}>{projectDisplay}</p>
+                  <div className="trash-card-meta">
+                    <span>{formatDateTime(conversation.updated_at)}</span>
+                  </div>
+                </div>
+                <div className="favorite-card-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => void handleOpenConversation(conversation)}
+                  >
+                    {shell.openConversation}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary favorite-remove-button"
+                    onClick={() => handleToggleFavoriteConversation(conversation)}
+                  >
+                    {locale === "en" ? "Remove" : "取消收藏"}
+                  </button>
+                </div>
               </article>
             );
           })}
@@ -5297,6 +5505,7 @@ function App() {
       open={showSettings}
       title={t("settings.title")}
       closeLabel={locale === "en" ? "Back" : "返回"}
+      showHeaderCloseButton={false}
       languageLabel={t("settings.language")}
       locale={appSettings.locale}
       fontFamily={appSettings.fontFamily}
@@ -5419,7 +5628,10 @@ function App() {
                     id="agent-source-select"
                     value={selectedAgent}
                     aria-label={locale === "en" ? "Conversation source" : "对话来源"}
-                    onChange={(event) => setSelectedAgent(event.target.value as AgentType)}
+                    onChange={(event) => {
+                      setShowFavorites(false);
+                      setSelectedAgent(event.target.value as AgentType);
+                    }}
                   >
                     {AGENT_OPTIONS.map((agent) => (
                       <option key={agent.value} value={agent.value}>
@@ -5597,7 +5809,7 @@ function App() {
                       type="button"
                       className="bulk-selection-action"
                       onClick={handleSelectVisibleConversations}
-                      disabled={allVisibleConversationsSelected || filteredConversations.length === 0}
+                      disabled={allVisibleConversationsSelected || displayedConversations.length === 0}
                     >
                       {shell.selectVisible}
                     </button>
@@ -5625,7 +5837,7 @@ function App() {
                 <div className="loading">
                   <div className="spinner"></div>
                 </div>
-              ) : projectGroups.length === 0 ? (
+              ) : displayedConversations.length === 0 ? (
                 <div className="inline-empty-state sidebar-empty">
                   <div className="inline-empty-body">{shell.noProgressBody}</div>
                 </div>
@@ -5830,50 +6042,58 @@ function App() {
           </div>
 
           <nav className="sidebar-utility-nav" aria-label={locale === "en" ? "App pages" : "应用页面"}>
-            <button
-              type="button"
-              className={`utility-nav-button ${showTrash ? "active" : ""}`}
-              aria-label={shell.trash}
-              onClick={() => {
-                setShowSettings(false);
-                setShowAbout(false);
-                setShowTrash(true);
-              }}
-            >
-              <WindowButtonIcon type="trash" />
-              <span className="utility-nav-label">{shell.trash}</span>
-              {trashedConversations.length > 0 ? (
-                <span className="utility-nav-count">{trashedConversations.length}</span>
-              ) : null}
-            </button>
+            <div className="utility-nav-actions">
+              <button
+                type="button"
+                className={`utility-nav-button ${showFavorites ? "active" : ""}`}
+                aria-label={shell.favorites}
+                onClick={() => {
+                  setShowTrash(false);
+                  setShowSettings(false);
+                  setShowAbout(false);
+                  setShowFavorites((current) => !current);
+                }}
+              >
+                <WindowButtonIcon type="favorite" />
+                <span className="utility-nav-label">{shell.favorites}</span>
+                {favoriteConversations.length > 0 ? (
+                  <span className="utility-nav-count">{favoriteConversations.length}</span>
+                ) : null}
+              </button>
 
-            <button
-              type="button"
-              className={`utility-nav-button ${showSettings ? "active" : ""}`}
-              aria-label={shell.settings}
-              onClick={() => {
-                setShowTrash(false);
-                setShowAbout(false);
-                setShowSettings(true);
-              }}
-            >
-              <WindowButtonIcon type="settings" />
-              <span className="utility-nav-label">{shell.settings}</span>
-            </button>
+              <button
+                type="button"
+                className={`utility-nav-button ${showTrash ? "active" : ""}`}
+                aria-label={shell.trash}
+                onClick={() => {
+                  setShowFavorites(false);
+                  setShowSettings(false);
+                  setShowAbout(false);
+                  setShowTrash(true);
+                }}
+              >
+                <WindowButtonIcon type="trash" />
+                <span className="utility-nav-label">{shell.trash}</span>
+                {trashedConversations.length > 0 ? (
+                  <span className="utility-nav-count">{trashedConversations.length}</span>
+                ) : null}
+              </button>
 
-            <button
-              type="button"
-              className={`utility-nav-button ${showAbout ? "active" : ""}`}
-              aria-label={shell.aboutChatMem}
-              onClick={() => {
-                setShowTrash(false);
-                setShowSettings(false);
-                setShowAbout(true);
-              }}
-            >
-              <WindowButtonIcon type="help" />
-              <span className="utility-nav-label">{shell.aboutChatMem}</span>
-            </button>
+              <button
+                type="button"
+                className={`utility-nav-button ${showSettings ? "active" : ""}`}
+                aria-label={shell.settings}
+                onClick={() => {
+                  setShowFavorites(false);
+                  setShowTrash(false);
+                  setShowAbout(false);
+                  setShowSettings(true);
+                }}
+              >
+                <WindowButtonIcon type="settings" />
+                <span className="utility-nav-label">{shell.settings}</span>
+              </button>
+            </div>
             <span className="utility-nav-version">v{packageInfo.version}</span>
           </nav>
         </aside>
@@ -5887,19 +6107,33 @@ function App() {
           </button>
         ) : null}
 
+        {showSettings ? (
+          <button
+            type="button"
+            className="sidebar-collapse-float settings-return-float"
+            aria-label={locale === "en" ? "Back" : "返回"}
+            title={locale === "en" ? "Back" : "返回"}
+            onClick={() => setShowSettings(false)}
+          >
+            <WindowButtonIcon type="back" />
+          </button>
+        ) : null}
+
         <main
           className={`workspace ${showSettings ? "settings-workspace" : ""} ${
             showAbout ? "about-workspace" : ""
-          } ${showTrash ? "trash-workspace" : ""}`}
+          } ${showTrash ? "trash-workspace" : ""} ${showFavorites ? "favorites-workspace" : ""}`}
         >
           <section className="workspace-surface">
             {showSettings
               ? renderSettingsPanel()
               : showAbout
                 ? renderAboutWorkspace()
-                : showTrash
-                  ? renderTrashWorkspace()
-                  : renderWorkspace()}
+                : showFavorites
+                  ? renderFavoritesWorkspace()
+                  : showTrash
+                    ? renderTrashWorkspace()
+                    : renderWorkspace()}
           </section>
         </main>
       </div>

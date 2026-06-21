@@ -360,13 +360,15 @@ describe("App", () => {
     const settingsPanel = document.querySelector(".settings-panel");
     expect(settingsPanel?.closest(".workspace-surface")).toBeTruthy();
     expect(document.querySelector(".settings-overlay")).toBeNull();
+    expect(document.querySelector(".settings-panel-header .toolbar-button")).toBeNull();
+    expect(document.querySelector(".settings-return-float")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Choose a conversation" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(await screen.findByRole("heading", { name: "Choose a conversation" })).toBeTruthy();
   });
 
-  it("renders the 1.2.1 version and updated About page structure", async () => {
+  it("renders the 1.2.2 version without an About utility entry", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -374,16 +376,8 @@ describe("App", () => {
 
     renderApp();
 
-    expect(await screen.findByText("v1.2.1")).toBeTruthy();
-
-    fireEvent.click(await screen.findByRole("button", { name: "About us" }));
-
-    expect(await screen.findByRole("heading", { name: "About ChatMem" })).toBeTruthy();
-    expect(screen.getByText("What changed in 1.2.1")).toBeTruthy();
-    expect(screen.getByText("Continuation briefs")).toBeTruthy();
-    expect(screen.getByText("Trash actions stay visible")).toBeTruthy();
-    expect(screen.getByText(/ZCode task history/)).toBeTruthy();
-    expect(screen.getByText(/Markdown conversation reading/)).toBeTruthy();
+    expect(await screen.findByText("v1.2.2")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "About us" })).toBeNull();
   });
 
   it("opens an in-app card before moving one sidebar conversation to trash", async () => {
@@ -421,6 +415,35 @@ describe("App", () => {
       });
     });
     expect(window.confirm).not.toHaveBeenCalled();
+  });
+
+  it("lets users favorite a conversation and open the favorites list", async () => {
+    localStorage.setItem(
+      "chatmem.settings",
+      JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
+    );
+
+    renderApp();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Favorite Debug session" }));
+
+    const storedSettings = JSON.parse(localStorage.getItem("chatmem.settings") ?? "{}");
+    expect(storedSettings.favoriteConversations["claude:conv-001"]).toMatchObject({
+      id: "conv-001",
+      sourceAgent: "claude",
+      projectDir: "D:/VSP/demo",
+      summary: "Debug session",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
+
+    expect(screen.getByRole("heading", { name: "Favorites" })).toBeTruthy();
+    expect(screen.getAllByText("Debug session").length).toBeGreaterThan(0);
+    expect(screen.getByText("Memory investigation")).toBeTruthy();
+    expect(document.querySelector(".utility-nav-count")?.textContent).toBe("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
+    expect(screen.queryByRole("heading", { name: "Favorites" })).toBeNull();
   });
 
   it("moves selected sidebar conversations to trash after one bulk confirmation card", async () => {

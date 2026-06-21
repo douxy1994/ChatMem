@@ -50,23 +50,6 @@ describe("Sync settings", () => {
   it("persists a Zotero-style WebDAV conversation-data profile without a fake provider dropdown", async () => {
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: "About us" }));
-    expect(await screen.findByRole("heading", { name: "About ChatMem" })).toBeTruthy();
-    expect(screen.getByText(/local-first memory and migration layer/i)).toBeTruthy();
-    expect(screen.getByText("What changed in 1.2.1")).toBeTruthy();
-    expect(screen.getByText("Continuation briefs")).toBeTruthy();
-    expect(screen.getByText("Trash actions stay visible")).toBeTruthy();
-    expect(screen.getByText("ZCode task history")).toBeTruthy();
-    expect(screen.getByText("Markdown conversation reading")).toBeTruthy();
-    expect(screen.getByText("Rimagination/ChatMem")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Acknowledgements" })).toBeNull();
-    expect(screen.getByText("Design references and acknowledgements")).toBeTruthy();
-    expect(screen.getByText(/mem0/)).toBeTruthy();
-    expect(screen.getByText(/Letta/)).toBeTruthy();
-    expect(screen.getByText(/Zep/)).toBeTruthy();
-    expect(screen.getByText(/LLM Wiki/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
     expect(screen.queryByRole("heading", { name: "About ChatMem" })).toBeNull();
     expect(await screen.findByRole("heading", { name: "Conversation Data Sync" })).toBeTruthy();

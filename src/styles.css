@@ -241,6 +241,7 @@ button {
 
 .window-control-button svg,
 .icon-button svg,
+.sidebar-collapse-float svg,
 .advanced-toggle svg,
 .project-group-chevron svg {
   width: 16px;
@@ -1044,18 +1045,72 @@ button {
   color: inherit;
   cursor: pointer;
   display: block;
-  padding: 10px 12px;
+  padding: 10px 72px 10px 12px;
   text-align: left;
 }
 
 .conversation-item.selection-mode .conversation-item-select {
   padding-left: 0;
+  padding-right: 12px;
+}
+
+.conversation-item-favorite {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(143, 110, 34, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #a36b06;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(4px, -50%);
+  transition:
+    opacity var(--transition-base),
+    transform var(--transition-base),
+    background var(--transition-base),
+    border-color var(--transition-base),
+    color var(--transition-base);
+}
+
+.conversation-item-favorite svg {
+  width: 14px;
+  height: 14px;
+}
+
+.conversation-item-favorite.is-active,
+.conversation-item:hover .conversation-item-favorite,
+.conversation-item.selected .conversation-item-favorite,
+.conversation-item:focus-within .conversation-item-favorite {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(0, -50%);
+}
+
+.conversation-item-favorite.is-active {
+  background: #fff7df;
+  border-color: rgba(163, 107, 6, 0.3);
+  color: #8a5a00;
+}
+
+.conversation-item-favorite:hover,
+.conversation-item-favorite:focus-visible {
+  background: #fff3c4;
+  border-color: rgba(163, 107, 6, 0.36);
+  outline: none;
 }
 
 .conversation-item-delete {
   position: absolute;
   top: 50%;
-  right: 8px;
+  right: 42px;
   z-index: 1;
   min-height: 28px;
   padding: 0 10px;
@@ -1625,16 +1680,25 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  margin: 8px 16px 16px;
+  gap: 8px;
+  margin: 8px 12px 16px;
   position: relative;
+}
+
+.utility-nav-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .utility-nav-version {
   font-size: 11px;
   color: var(--text-muted);
   margin-left: auto;
-  padding-left: 8px;
+  padding-left: 4px;
+  line-height: normal;
 }
 
 .sidebar-collapse-float {
@@ -1666,7 +1730,9 @@ button {
 
 .utility-nav-button {
   position: relative;
-  width: 100%;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
   min-height: 34px;
   appearance: none;
   border: 1px solid transparent;
@@ -1676,8 +1742,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 3px 0;
+  gap: 4px;
+  padding: 3px 6px;
   cursor: pointer;
   transition:
     background var(--transition-base),
@@ -1717,19 +1783,21 @@ button {
 }
 
 .utility-nav-label {
+  flex: 0 1 auto;
   min-width: 0;
   color: currentColor;
-  font-size: 12.5px;
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .utility-nav-count {
-  margin-left: -1px;
+  flex: 0 0 auto;
+  margin-left: 0;
   min-width: 14px;
   height: 14px;
-  padding: 0 3px;
+  padding: 0 2px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -1739,6 +1807,18 @@ button {
   color: var(--text-muted);
   font-size: 10px;
   line-height: 1;
+}
+
+.favorite-card-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.favorite-remove-button {
+  color: #8a5a00;
+  border-color: rgba(163, 107, 6, 0.22);
 }
 
 .workspace {

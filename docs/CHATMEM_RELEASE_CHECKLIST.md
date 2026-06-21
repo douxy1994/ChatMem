@@ -73,7 +73,7 @@ npm run tauri build
 - Confirm the GitHub Release contains the expected installer assets.
 - Confirm `latest.json` is present on the release and points to the new version.
 - Confirm the updater endpoint in [src-tauri/tauri.conf.json](/D:/VSP/agentswap-gui/src-tauri/tauri.conf.json) still matches the published release channel:
-  - `https://github.com/Rimagination/ChatMem/releases/latest/download/latest.json`
+  - `https://github.com/douxy1994/ChatMem/releases/latest/download/latest.json`
 - Install or open an older desktop build and confirm in-app update detection reaches the new version.
 
 ## 7. Final post-release check
