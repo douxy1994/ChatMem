@@ -306,12 +306,60 @@ describe("App", () => {
     expect((await screen.findAllByText(appVersionPattern)).length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "Control Center" })).toBeTruthy();
     expect(screen.getByText("Continue, organize, and ship faster")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sync now" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Resume Latest" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Favorites" })).toBeTruthy();
     expect(screen.getByText("Projects")).toBeTruthy();
     expect(screen.queryByText("Chats")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Choose a conversation" })).toBeNull();
     expect(document.querySelector(".workbench-page")).toBeTruthy();
+  });
+
+  it("runs configured local sync from the Workbench header", async () => {
+    localStorage.setItem(
+      "chatmem.settings",
+      JSON.stringify({
+        locale: "en",
+        autoCheckUpdates: false,
+        autoCaptureMemory: false,
+        sync: {
+          provider: "onedrive",
+          webdavScheme: "https",
+          webdavHost: "",
+          webdavPath: "",
+          username: "",
+          remotePath: "chatmem",
+          downloadMode: "on-sync",
+          syncFolder: "D:/OneDrive/chatmem",
+        },
+      }),
+    );
+    const baseImplementation = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "sync_local_now") {
+        expect(payload).toEqual({ folderPath: "D:/OneDrive/chatmem" });
+        return {
+          uploaded: 2,
+          downloaded: 1,
+          skipped: 0,
+          conflicts_resolved: 0,
+          folder_path: "D:/OneDrive/chatmem",
+        };
+      }
+
+      return baseImplementation?.(command, payload) ?? [];
+    });
+
+    renderApp();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sync now" }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("sync_local_now", {
+        folderPath: "D:/OneDrive/chatmem",
+      });
+    });
+    expect(await screen.findByText("Sync complete: ↑2 ↓1.")).toBeTruthy();
   });
 
   it("silently auto-captures the selected conversation when memory capture is enabled", async () => {

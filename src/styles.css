@@ -1910,6 +1910,80 @@ button {
   gap: 8px;
 }
 
+.workbench-sync-button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 9px;
+  border: 1px solid rgba(58, 143, 100, 0.18);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(237, 248, 241, 0.96), rgba(255, 255, 255, 0.82));
+  color: var(--accent-strong);
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(47, 116, 79, 0.08);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.workbench-sync-button:hover:not(:disabled),
+.workbench-sync-button:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(47, 116, 79, 0.32);
+  background: linear-gradient(135deg, rgba(226, 244, 233, 0.98), rgba(255, 255, 255, 0.9));
+  box-shadow: 0 12px 28px rgba(47, 116, 79, 0.12);
+}
+
+.workbench-sync-button:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.workbench-sync-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(58, 143, 100, 0.12);
+  color: var(--accent-strong);
+}
+
+.workbench-sync-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform-origin: center;
+}
+
+.workbench-sync-button:disabled .workbench-sync-icon svg {
+  animation: workbench-sync-spin 950ms linear infinite;
+}
+
+@keyframes workbench-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench-sync-button:disabled .workbench-sync-icon svg {
+    animation: none;
+  }
+}
+
 .workbench-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -20,6 +20,7 @@ Required feature areas:
 10. Windows/macOS parity status
 11. Trash and sync deletion semantics
 12. Summary migration option
+13. Workbench quick sync entry
 
 The implementation must be local-first and non-destructive by default.
 
@@ -50,7 +51,7 @@ Expected behavior:
 
 - The Workbench title is the primary title.
 - The line below it is the subtitle.
-- Primary actions include “Resume Latest” and “Open Favorites”.
+- Primary actions include “Sync now”, “Resume Latest”, and “Open Favorites”.
 - Cards must reflow in narrow windows instead of pushing the Workbench below the sidebar.
 - Avoid blank card slots. If a section has no data, show a compact empty state inside that section or rebalance the grid.
 
@@ -58,6 +59,34 @@ Return behavior:
 
 - Conversation detail and local history detail should expose a floating bottom-right “Back to Workbench” button.
 - The button should not require scrolling to the top of a long conversation.
+
+## Workbench Quick Sync
+
+The Workbench header must expose a visible sync action so users do not need to open Settings just to run a manual sync.
+
+Placement:
+
+- Put the button in the Workbench header action group.
+- Keep it visually aligned with “Resume Latest” and “Open Favorites”.
+- Use a distinct sync icon. The macOS build uses a custom circular two-arrow icon; Windows may use a native Fluent-style sync glyph if available, but the meaning must be clear.
+- The button label should be “Sync now” in English and “立即同步” in Chinese.
+
+Behavior:
+
+- Reuse the same persisted sync settings used by SettingsPanel.
+- If `provider === "webdav"`, validate WebDAV host, username, remote folder, and saved password, then call `sync_webdav_now`.
+- If `provider === "onedrive"`, validate `syncFolder`, then call `sync_local_now`.
+- After a successful local folder sync, reload the conversation list so newly downloaded conversations appear immediately.
+- If sync is disabled or incomplete, show a visible error notice instead of failing silently.
+- While a sync is running, disable the button and show a syncing state such as “Syncing...” / “正在同步...”.
+
+Expected user feedback:
+
+- WebDAV success: show uploaded file count.
+- Local folder success: show uploaded and downloaded counts.
+- Failure: prefix the message with the localized sync failure label already used by SettingsPanel.
+
+Do not create a second sync implementation for the Workbench button. It must be a shortcut into the same commands and validation rules as the Settings sync controls.
 
 ## Favorites+
 
@@ -290,6 +319,8 @@ cargo check --manifest-path .\src-tauri\Cargo.toml
 Add or keep tests for:
 
 - Workbench heading appears when no conversation is selected.
+- Workbench “Sync now” button calls `sync_local_now` or `sync_webdav_now` according to the persisted sync provider.
+- Workbench sync button disables while a sync is running and shows a success or failure notice.
 - Settings Back returns to Workbench.
 - Version label shows `v1.3.0`.
 - Favorites metadata normalizes and persists.
@@ -304,6 +335,7 @@ Add or keep tests for:
 Windows parity is complete when:
 
 - all Workbench cards render from local data without placeholders
+- Workbench quick sync reuses the Settings sync configuration and refreshes conversations after local folder sync
 - Favorites metadata survives app restart
 - Trash recovery and final deletion semantics match this document
 - summary migration is an additional option, not a replacement for full migration

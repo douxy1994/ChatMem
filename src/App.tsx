@@ -147,6 +147,8 @@ type AppNotice = {
   message: string;
 } | null;
 
+type WorkbenchSyncState = "idle" | "syncing";
+
 interface Message {
   id: string;
   timestamp: string;
@@ -1257,6 +1259,7 @@ function WindowButtonIcon({
     | "restoreExpansion"
     | "organize"
     | "manageGroups"
+    | "sync"
     | "bulkSelect"
     | "favorite"
     | "trash"
@@ -1361,6 +1364,18 @@ function WindowButtonIcon({
         <rect x="5.5" y="5.5" width="8" height="6" rx="1.2" fill="var(--bg-surface, #f6f8f3)" stroke="currentColor" strokeWidth="1.2" />
         <circle cx="5" cy="7.5" r="0.8" fill="currentColor" />
         <circle cx="10" cy="7.5" r="0.8" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (type === "sync") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M12.5 5.7A4.9 4.9 0 0 0 4 3.7L2.6 5.1" />
+        <path d="M2.6 2.3v2.8h2.8" />
+        <path d="M3.5 10.3A4.9 4.9 0 0 0 12 12.3l1.4-1.4" />
+        <path d="M13.4 13.7v-2.8h-2.8" />
+        <path d="M6.2 8h3.6" />
       </svg>
     );
   }
@@ -1574,6 +1589,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [copyState, setCopyState] = useState<CopyState>({ target: null, status: "idle" });
   const [appSettings, setAppSettings] = useState<AppSettings>(() => loadSettings());
+  const [workbenchSyncState, setWorkbenchSyncState] = useState<WorkbenchSyncState>("idle");
   const [updateState, setUpdateState] = useState<UpdateState>({ kind: "idle" });
   const [, setActivePage] = useState<TopPage>("continue");
   const [historyView, setHistoryView] = useState<HistoryView>("conversations");
@@ -2531,6 +2547,79 @@ function App() {
     const folder = appSettings.sync.syncFolder;
     if (!folder) throw new Error("Please select a sync folder first");
     return invoke<LocalSyncResult>("sync_local_now", { folderPath: folder });
+  };
+
+  const handleWorkbenchSyncNow = async () => {
+    if (workbenchSyncState === "syncing") return;
+
+    setWorkbenchSyncState("syncing");
+    try {
+      const syncSettings = appSettings.sync;
+
+      if (syncSettings.provider === "webdav") {
+        const hasRequiredFields =
+          syncSettings.webdavHost.trim() &&
+          syncSettings.username.trim() &&
+          syncSettings.remotePath.trim();
+
+        if (!hasRequiredFields) {
+          throw new Error(
+            locale === "en"
+              ? "Fill in the WebDAV server, username, and remote folder in Settings first."
+              : "请先在设置里填写 WebDAV 网址、用户名和远程目录。",
+          );
+        }
+
+        const password = await loadWebDavPassword(syncSettings.username);
+        if (!password) {
+          throw new Error(
+            locale === "en"
+              ? "Missing WebDAV password. Save it in Settings once, then sync from the Workbench."
+              : "缺少 WebDAV 密码。请先在设置里保存一次密码，再从工作台同步。",
+          );
+        }
+
+        const result = await handleSyncWebDavNow({ syncSettings, password });
+        setAppNotice({
+          kind: "success",
+          message:
+            locale === "en"
+              ? `${syncCopy.syncSuccessPrefix} ${result.uploadedCount} ${syncCopy.syncSuccessSuffix}.`
+              : `${syncCopy.syncSuccessPrefix} ${result.uploadedCount} ${syncCopy.syncSuccessSuffix}。`,
+        });
+        return;
+      }
+
+      if (syncSettings.provider === "onedrive") {
+        if (!syncSettings.syncFolder.trim()) {
+          throw new Error(
+            locale === "en" ? "Choose a sync folder in Settings first." : "请先在设置里选择同步文件夹。",
+          );
+        }
+
+        const result = await handleSyncLocalNow();
+        await loadConversations(searchQuery, selectedAgent);
+        setAppNotice({
+          kind: "success",
+          message:
+            locale === "en"
+              ? `Sync complete: ↑${result.uploaded} ↓${result.downloaded}.`
+              : `同步完成：↑${result.uploaded} ↓${result.downloaded}。`,
+        });
+        return;
+      }
+
+      throw new Error(
+        locale === "en" ? "Choose a sync method in Settings first." : "请先在设置里选择同步方式。",
+      );
+    } catch (error) {
+      setAppNotice({
+        kind: "error",
+        message: `${syncCopy.syncFailedPrefix}: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    } finally {
+      setWorkbenchSyncState("idle");
+    }
   };
 
   // Auto-backup timer: periodically check cloud readiness and sync
@@ -5443,6 +5532,21 @@ function App() {
           </p>
         </div>
         <div className="workbench-header-actions">
+          <button
+            type="button"
+            className="workbench-sync-button"
+            onClick={() => void handleWorkbenchSyncNow()}
+            disabled={workbenchSyncState === "syncing"}
+            aria-label={syncCopy.syncNowLabel}
+            title={syncCopy.syncNowLabel}
+          >
+            <span className="workbench-sync-icon" aria-hidden="true">
+              <WindowButtonIcon type="sync" />
+            </span>
+            <span>
+              {workbenchSyncState === "syncing" ? syncCopy.syncingNowLabel : syncCopy.syncNowLabel}
+            </span>
+          </button>
           <button
             type="button"
             className="btn btn-primary"
