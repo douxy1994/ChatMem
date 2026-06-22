@@ -226,6 +226,32 @@ describe("Memory workspace", () => {
     expect(screen.getByText("1 startup rule source")).toBeTruthy();
   });
 
+  it("opens project memory from the conversation summary without switching to local history", async () => {
+    renderApp();
+
+    fireEvent.click((await screen.findAllByText("Memory workflow"))[0]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Memory View" }));
+
+    expect(await screen.findByRole("complementary", { name: "Startup Rules" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Review 1" })).toBeTruthy();
+    expect(screen.getByText("Review pending memory")).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 2, name: "D:/VSP/agentswap-gui" })).toBeNull();
+  });
+
+  it("returns to the workbench from conversation and local history with the floating button", async () => {
+    renderApp();
+
+    fireEvent.click((await screen.findAllByText("Memory workflow"))[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "Return to Workbench" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Control Center" })).toBeTruthy();
+
+    fireEvent.click((await screen.findAllByText("Memory workflow"))[0]);
+    await openLocalHistoryView();
+    fireEvent.click(await screen.findByRole("button", { name: "Return to Workbench" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Control Center" })).toBeTruthy();
+  });
+
   it("reviews a pending memory candidate from the drawer", async () => {
     renderApp();
 

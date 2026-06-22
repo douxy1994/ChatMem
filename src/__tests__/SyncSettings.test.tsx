@@ -1,13 +1,21 @@
-﻿import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+﻿import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { I18nProvider } from "../i18n/I18nProvider";
 import { SETTINGS_STORAGE_KEY } from "../settings/storage";
 
 const mockInvoke = vi.fn();
+const mockEventListeners = new Map<string, (event: unknown) => void>();
 
 vi.mock("@tauri-apps/api/tauri", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (eventName: string, handler: (event: unknown) => void) => {
+    mockEventListeners.set(eventName, handler);
+    return () => mockEventListeners.delete(eventName);
+  }),
 }));
 
 vi.mock("@tauri-apps/api/updater", () => ({
@@ -35,6 +43,21 @@ function renderApp() {
   );
 }
 
+async function openSettingsFromMenu() {
+  await waitFor(() => {
+    expect(mockEventListeners.has("open-settings")).toBe(true);
+  });
+  await act(async () => {
+    mockEventListeners.get("open-settings")?.({});
+  });
+}
+
+function selectWebDavSync() {
+  fireEvent.change(screen.getByLabelText("Conversation data sync method:"), {
+    target: { value: "webdav" },
+  });
+}
+
 describe("Sync settings", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -45,20 +68,20 @@ describe("Sync settings", () => {
 
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue([]);
+    mockEventListeners.clear();
   });
 
   it("persists a Zotero-style WebDAV conversation-data profile without a fake provider dropdown", async () => {
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    await openSettingsFromMenu();
     expect(screen.queryByRole("heading", { name: "About ChatMem" })).toBeNull();
     expect(await screen.findByRole("heading", { name: "Conversation Data Sync" })).toBeTruthy();
     expect(screen.queryByText(/Use a generic WebDAV server/)).toBeNull();
     expect(screen.queryByText(/Account details/)).toBeNull();
 
-    fireEvent.click(screen.getByLabelText("Conversation data sync method:"));
-    const webdavLabel = screen.getByText("WebDAV");
-    expect(webdavLabel.closest("select")).toBeNull();
+    selectWebDavSync();
+    expect((screen.getByLabelText("Conversation data sync method:") as HTMLSelectElement).value).toBe("webdav");
     expect(screen.queryByText(/Passwords are kept/)).toBeNull();
     fireEvent.change(screen.getByLabelText("Protocol"), {
       target: { value: "https" },
@@ -86,6 +109,7 @@ describe("Sync settings", () => {
         username: "liang@example.com",
         remotePath: "chatmem",
         downloadMode: "as-needed",
+        syncFolder: "",
       });
       expect(saved.sync.password).toBeUndefined();
       expect(JSON.stringify(saved.sync)).not.toContain("local-secret");
@@ -118,12 +142,12 @@ describe("Sync settings", () => {
 
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    await openSettingsFromMenu();
 
     await waitFor(() => {
       expect(
-        (screen.getByLabelText("Conversation data sync method:") as HTMLInputElement).checked,
-      ).toBe(true);
+        (screen.getByLabelText("Conversation data sync method:") as HTMLSelectElement).value,
+      ).toBe("webdav");
       expect((screen.getByLabelText("Server and path") as HTMLInputElement).value).toBe(
         "dav.example.com/remote.php/dav/files/liang",
       );
@@ -148,14 +172,15 @@ describe("Sync settings", () => {
       username: "liang@example.com",
       remotePath: "chatmem",
       downloadMode: "as-needed",
+      syncFolder: "",
     });
   });
 
   it("verifies the WebDAV server with the entered password and shows success", async () => {
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
-    fireEvent.click(await screen.findByLabelText("Conversation data sync method:"));
+    await openSettingsFromMenu();
+    selectWebDavSync();
     fireEvent.change(screen.getByLabelText("Protocol"), {
       target: { value: "https" },
     });
@@ -192,8 +217,8 @@ describe("Sync settings", () => {
   it("runs a real WebDAV sync after credentials are entered", async () => {
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
-    fireEvent.click(await screen.findByLabelText("Conversation data sync method:"));
+    await openSettingsFromMenu();
+    selectWebDavSync();
     fireEvent.change(screen.getByLabelText("Protocol"), {
       target: { value: "https" },
     });
@@ -261,7 +286,7 @@ describe("Sync settings", () => {
 
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    await openSettingsFromMenu();
     fireEvent.click(await screen.findByRole("button", { name: "Run upgrade check" }));
 
     await waitFor(() => {
@@ -324,7 +349,7 @@ describe("Sync settings", () => {
 
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    await openSettingsFromMenu();
     expect(await screen.findByRole("heading", { name: "Agent integration" })).toBeTruthy();
     expect((await screen.findAllByText("Codex")).length).toBeGreaterThan(0);
     expect(screen.getByText(/MCP plus each agent's native guidance entry/)).toBeTruthy();

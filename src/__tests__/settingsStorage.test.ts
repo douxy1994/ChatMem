@@ -30,6 +30,9 @@ describe("settings storage", () => {
         createdAt: "2026-04-08T08:00:00Z",
         updatedAt: "2026-04-08T09:00:00Z",
         summary: "Debug session",
+        note: "",
+        tags: [],
+        pinned: false,
       },
     });
   });

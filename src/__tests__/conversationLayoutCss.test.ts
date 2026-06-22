@@ -10,6 +10,22 @@ function ruleFor(selector: string) {
   return match?.groups?.body ?? "";
 }
 
+function mediaRuleFor(query: string, selector: string) {
+  const mediaStart = styles.indexOf(`@media ${query}`);
+  if (mediaStart === -1) {
+    return "";
+  }
+
+  const selectorStart = styles.indexOf(selector, mediaStart);
+  if (selectorStart === -1) {
+    return "";
+  }
+
+  const bodyStart = styles.indexOf("{", selectorStart);
+  const bodyEnd = styles.indexOf("}", bodyStart);
+  return bodyStart === -1 || bodyEnd === -1 ? "" : styles.slice(bodyStart + 1, bodyEnd);
+}
+
 describe("conversation layout CSS", () => {
   it("lets the right conversation workspace shrink inside the app frame", () => {
     [
@@ -49,5 +65,14 @@ describe("conversation layout CSS", () => {
     expect(ruleFor(".trash-page-actions")).toContain("min-width: 0");
     expect(ruleFor(".trash-page-actions")).toContain("justify-content: flex-start");
     expect(ruleFor(".trash-page-actions")).toContain("flex-wrap: wrap");
+  });
+
+  it("keeps the sidebar and workspace as adjacent panes at narrow widths", () => {
+    expect(mediaRuleFor("(max-width: 960px)", ".app-body")).toContain(
+      "grid-template-columns: minmax(236px, 32vw) minmax(0, 1fr)",
+    );
+    expect(mediaRuleFor("(max-width: 760px)", ".app-body")).toContain(
+      "grid-template-columns: minmax(216px, 38vw) minmax(0, 1fr)",
+    );
   });
 });

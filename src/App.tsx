@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/tauri";
 import { appWindow } from "@tauri-apps/api/window";
 import ConversationDetail from "./components/ConversationDetail";
@@ -348,6 +349,7 @@ type ShellCopy = {
   confirmTrashRemotePasswordMissing: string;
   confirmTrashSyncBackup: string;
   confirmTrashSyncUnavailable: string;
+  confirmTrashSyncPreserved: string;
   cancel: string;
   moveToTrash: string;
   movingToTrash: string;
@@ -546,6 +548,9 @@ function conversationToFavoriteSnapshot(
     createdAt: conversation.created_at,
     updatedAt: conversation.updated_at,
     summary: conversation.summary ?? null,
+    note: "",
+    tags: [],
+    pinned: false,
   };
 }
 
@@ -969,6 +974,8 @@ function getShellCopy(locale: Locale): ShellCopy {
       confirmTrashRemotePasswordMissing: "WebDAV password is missing. Save it in Settings before deleting cloud backups.",
       confirmTrashSyncBackup: "Also delete OneDrive sync backup",
       confirmTrashSyncUnavailable: "OneDrive sync folder is not configured.",
+      confirmTrashSyncPreserved:
+        "Cloud and OneDrive sync copies are preserved while the item is recoverable. They are only cleaned during final Trash emptying or expiry.",
       cancel: "Cancel",
       moveToTrash: "Move to Trash",
       movingToTrash: "Moving...",
@@ -989,7 +996,9 @@ function getShellCopy(locale: Locale): ShellCopy {
       confirmEmptyTrashBody: (count) =>
         `This permanently removes ${count} recovery snapshot${
           count === 1 ? "" : "s"
-        }. You will not be able to restore ${count === 1 ? "it" : "them"} from ChatMem.`,
+        } and any configured OneDrive sync copies. You will not be able to restore ${
+          count === 1 ? "it" : "them"
+        } from ChatMem.`,
       emptyTrashSuccess: (count) =>
         count === 1 ? "Trash emptied. 1 snapshot removed." : `Trash emptied. ${count} snapshots removed.`,
       emptyTrashFailed: "Could not empty Trash",
@@ -1004,7 +1013,8 @@ function getShellCopy(locale: Locale): ShellCopy {
       delete: "Delete",
       helpHowItWorks: "How ChatMem works in the background",
       deleteConfirmTitle: "Confirm Delete",
-      deleteConfirmBody: "This action will delete the local record and OneDrive sync record. Once deleted, it cannot be recovered.",
+      deleteConfirmBody:
+        "This moves the local conversation into Trash and keeps sync copies recoverable until Trash is emptied or expires.",
       confirmDelete: "Confirm Delete",
     };
   }
@@ -1131,6 +1141,8 @@ function getShellCopy(locale: Locale): ShellCopy {
     confirmTrashRemotePasswordMissing: "缺少 WebDAV 密码。请先在设置里保存密码，再删除云端备份。",
     confirmTrashSyncBackup: "同时删除 OneDrive 同步备份",
     confirmTrashSyncUnavailable: "未配置 OneDrive 同步文件夹，不会处理同步备份。",
+    confirmTrashSyncPreserved:
+      "对话在垃圾箱保留期内，OneDrive 和云端同步副本会保留；只有清空垃圾箱或到期清理时才会处理最终删除。",
     cancel: "取消",
     moveToTrash: "移到垃圾箱",
     movingToTrash: "正在移动...",
@@ -1147,7 +1159,7 @@ function getShellCopy(locale: Locale): ShellCopy {
     emptyingTrash: "正在清空...",
     confirmEmptyTrashTitle: "清空垃圾箱？",
     confirmEmptyTrashBody: (count) =>
-      `这会永久移除 ${count} 份恢复快照，之后不能再从 ChatMem 恢复。`,
+      `这会永久移除 ${count} 份恢复快照，并清理已配置的 OneDrive 同步副本，之后不能再从 ChatMem 恢复。`,
     emptyTrashSuccess: (count) => `垃圾箱已清空，移除了 ${count} 份恢复快照。`,
     emptyTrashFailed: "清空垃圾箱失败",
     restore: "恢复",
@@ -1161,7 +1173,7 @@ function getShellCopy(locale: Locale): ShellCopy {
     delete: "删除",
     helpHowItWorks: "了解后台工作方式",
     deleteConfirmTitle: "确认删除",
-    deleteConfirmBody: "此操作将删除本机记录和 OneDrive 同步记录，删除后无法找回。",
+    deleteConfirmBody: "此操作会把本地对话移入垃圾箱，并保留同步副本；只有清空垃圾箱或到期清理时才会最终删除。",
     confirmDelete: "确认删除",
   };
 }
@@ -1244,6 +1256,7 @@ function WindowButtonIcon({
     | "collapseAll"
     | "restoreExpansion"
     | "organize"
+    | "manageGroups"
     | "bulkSelect"
     | "favorite"
     | "trash"
@@ -1331,11 +1344,21 @@ function WindowButtonIcon({
   if (type === "organize") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
-        {/* Back rectangle */}
+        <path d="M3 4.3h10" />
+        <path d="M3 8h10" />
+        <path d="M3 11.7h10" />
+        <circle cx="6" cy="4.3" r="1.25" fill="var(--bg-surface, #f6f8f3)" />
+        <circle cx="10" cy="8" r="1.25" fill="var(--bg-surface, #f6f8f3)" />
+        <circle cx="7.5" cy="11.7" r="1.25" fill="var(--bg-surface, #f6f8f3)" />
+      </svg>
+    );
+  }
+
+  if (type === "manageGroups") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
         <rect x="1.5" y="4.5" width="8" height="6" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
-        {/* Front rectangle */}
         <rect x="5.5" y="5.5" width="8" height="6" rx="1.2" fill="var(--bg-surface, #f6f8f3)" stroke="currentColor" strokeWidth="1.2" />
-        {/* Connection dots */}
         <circle cx="5" cy="7.5" r="0.8" fill="currentColor" />
         <circle cx="10" cy="7.5" r="0.8" fill="currentColor" />
       </svg>
@@ -1675,6 +1698,33 @@ function App() {
       unlistenResize?.();
     };
   }, [syncNativeWindowState]);
+
+  useEffect(() => {
+    let isDisposed = false;
+    let unlistenOpenSettings: (() => void) | null = null;
+
+    void listen("open-settings", () => {
+      setShowFavorites(false);
+      setShowTrash(false);
+      setShowAbout(false);
+      setShowSettings(true);
+    })
+      .then((unlisten) => {
+        if (isDisposed) {
+          unlisten();
+          return;
+        }
+        unlistenOpenSettings = unlisten;
+      })
+      .catch(() => {
+        // Browser tests and web previews can run without a native Tauri event bus.
+      });
+
+    return () => {
+      isDisposed = true;
+      unlistenOpenSettings?.();
+    };
+  }, []);
 
   useEffect(() => {
     setSelectedConversation(null);
@@ -2207,6 +2257,59 @@ function App() {
     setAppSettings(nextSettings);
   };
 
+  const handleUpdateFavoriteConversation = (
+    conversationKey: string,
+    patch: Partial<FavoriteConversationSnapshot>,
+  ) => {
+    const currentFavorite = appSettings.favoriteConversations[conversationKey];
+    if (!currentFavorite) {
+      return;
+    }
+
+    const nextFavorites = {
+      ...appSettings.favoriteConversations,
+      [conversationKey]: {
+        ...currentFavorite,
+        ...patch,
+      },
+    };
+    const nextSettings = updateSettings({ favoriteConversations: nextFavorites });
+    setAppSettings(nextSettings);
+  };
+
+  const handleCopyFavoriteContinuationCard = async (conversation: ConversationSummary) => {
+    const conversationKey = getConversationKey(conversation);
+    const favorite = appSettings.favoriteConversations[conversationKey];
+    const title = normalizeConversationTitle(conversation.summary) || conversation.id;
+    const card = [
+      "# Favorite Continuation Card",
+      "",
+      `title: ${title}`,
+      `source: ${conversation.source_agent}`,
+      `conversation: ${conversation.id}`,
+      `project: ${getConversationProjectDir(conversation) || "--"}`,
+      `updated: ${conversation.updated_at}`,
+      favorite?.pinned ? "priority: pinned" : null,
+      favorite?.tags?.length ? `tags: ${favorite.tags.join(", ")}` : null,
+      favorite?.note?.trim() ? `note: ${favorite.note.trim()}` : null,
+      "",
+      "Use ChatMem to reopen this favorite, load the source-backed conversation, and continue from the latest useful state instead of rereading unrelated history.",
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n");
+
+    try {
+      await navigator.clipboard.writeText(card);
+      setAppNotice({
+        kind: "success",
+        message: locale === "en" ? "Favorite continuation card copied." : "收藏继续卡片已复制。",
+      });
+    } catch (error) {
+      console.error("Failed to copy favorite continuation card:", error);
+      setAppNotice({ kind: "error", message: shell.copyFailed });
+    }
+  };
+
   const moveConversationsToTrash = (
     targets: Array<
       Pick<ConversationSummary, "id" | "source_agent" | "summary"> |
@@ -2241,27 +2344,8 @@ function App() {
       ? targets.some((conversation) => conversation.id === selectedConversation.id)
       : false;
     const syncSettings = appSettings.sync;
-    const shouldDeleteRemote =
-      trashConfirm.deleteRemoteBackup &&
-      syncSettings.provider === "webdav" &&
-      syncSettings.webdavHost.trim().length > 0 &&
-      syncSettings.username.trim().length > 0;
-    const shouldDeleteSync =
-      trashConfirm.deleteSyncBackup &&
-      syncSettings.syncFolder.trim().length > 0;
-    let webdavPassword: string | null = null;
-
-    if (shouldDeleteRemote) {
-      webdavPassword = await loadWebDavPassword(syncSettings.username);
-      if (!webdavPassword) {
-        setTrashConfirm((current) =>
-          current
-            ? { ...current, busy: false, error: shell.confirmTrashRemotePasswordMissing }
-            : current,
-        );
-        return;
-      }
-    }
+    const shouldDeleteRemote = false;
+    const shouldDeleteSync = false;
 
     if (isBulk) {
       setBulkDeleting(true);
@@ -2285,7 +2369,7 @@ function App() {
             webdavPath: syncSettings.webdavPath,
             remotePath: syncSettings.remotePath,
             username: syncSettings.username,
-            password: webdavPassword ?? "",
+            password: "",
             deleteSyncBackup: shouldDeleteSync,
             syncFolder: syncSettings.syncFolder,
           });
@@ -2851,11 +2935,18 @@ function App() {
   }, [projectFilters, sortedConversations]);
 
   const favoriteConversations = useMemo(
-    () =>
-      sortConversations(
-        Object.values(appSettings.favoriteConversations).map(favoriteSnapshotToConversationSummary),
-        librarySort,
-      ),
+    () => {
+      const snapshots = Object.values(appSettings.favoriteConversations);
+      return snapshots
+        .sort((left, right) => {
+          if (left.pinned !== right.pinned) {
+            return left.pinned ? -1 : 1;
+          }
+          const field = librarySort === "created" ? "createdAt" : "updatedAt";
+          return right[field].localeCompare(left[field]);
+        })
+        .map(favoriteSnapshotToConversationSummary);
+    },
     [appSettings.favoriteConversations, librarySort],
   );
 
@@ -3378,6 +3469,170 @@ function App() {
     .filter((handoff) => !handoff.consumed_at)
     .slice(0, 3);
 
+  const latestConversation = displayedConversations[0] ?? sortedConversations[0] ?? null;
+
+  const workbenchProjectTimeline = useMemo(() => {
+    const projectMap = new Map<
+      string,
+      {
+        projectDir: string;
+        label: string;
+        count: number;
+        latestAt: string;
+        messageCount: number;
+        fileCount: number;
+        latestConversation: ConversationSummary;
+      }
+    >();
+
+    sortedConversations.forEach((conversation) => {
+      const projectDir = getConversationProjectDir(conversation) || (locale === "en" ? "No project" : "无项目");
+      const projectKey = projectPathKey(projectDir);
+      const current = projectMap.get(projectKey);
+      if (!current) {
+        projectMap.set(projectKey, {
+          projectDir,
+          label: getProjectLabel(projectDir),
+          count: 1,
+          latestAt: conversation.updated_at,
+          messageCount: conversation.message_count,
+          fileCount: conversation.file_count,
+          latestConversation: conversation,
+        });
+        return;
+      }
+
+      current.count += 1;
+      current.messageCount += conversation.message_count;
+      current.fileCount += conversation.file_count;
+      if (conversation.updated_at > current.latestAt) {
+        current.latestAt = conversation.updated_at;
+        current.latestConversation = conversation;
+      }
+    });
+
+    return Array.from(projectMap.values())
+      .sort((left, right) => right.latestAt.localeCompare(left.latestAt))
+      .slice(0, 6);
+  }, [locale, sortedConversations]);
+
+  const workbenchSearchMatches = useMemo(
+    () => (searchQuery.trim() ? filteredConversations : sortedConversations).slice(0, 5),
+    [filteredConversations, searchQuery, sortedConversations],
+  );
+
+  const highSignalConversations = useMemo(
+    () =>
+      [...sortedConversations]
+        .sort((left, right) => {
+          const leftFavorite = appSettings.favoriteConversations[getConversationKey(left)] ? 12 : 0;
+          const rightFavorite = appSettings.favoriteConversations[getConversationKey(right)] ? 12 : 0;
+          const leftScore = left.message_count + left.file_count * 4 + leftFavorite;
+          const rightScore = right.message_count + right.file_count * 4 + rightFavorite;
+          return rightScore - leftScore;
+        })
+        .slice(0, 4),
+    [appSettings.favoriteConversations, sortedConversations],
+  );
+
+  const cleanupCandidates = useMemo(() => {
+    const now = Date.now();
+    return sortedConversations
+      .filter((conversation) => {
+        const isFavorite = Boolean(appSettings.favoriteConversations[getConversationKey(conversation)]);
+        const ageDays = Math.floor((now - new Date(conversation.updated_at).getTime()) / 86_400_000);
+        return !isFavorite && ageDays >= 30 && conversation.message_count <= 8 && conversation.file_count === 0;
+      })
+      .slice(0, 4);
+  }, [appSettings.favoriteConversations, sortedConversations]);
+
+  const favoriteTagSummary = useMemo(() => {
+    const tagCounts = new Map<string, number>();
+    Object.values(appSettings.favoriteConversations).forEach((favorite) => {
+      favorite.tags?.forEach((tag) => {
+        const trimmed = tag.trim();
+        if (trimmed) {
+          tagCounts.set(trimmed, (tagCounts.get(trimmed) ?? 0) + 1);
+        }
+      });
+    });
+    return Array.from(tagCounts.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 6);
+  }, [appSettings.favoriteConversations]);
+
+  const workbenchAgentRecommendation = useMemo(() => {
+    const target = selectedConversation ?? latestConversation;
+    if (!target) {
+      return {
+        agent: "Codex",
+        reason: locale === "en" ? "Best default for codebase continuation." : "代码库接续的默认选择。",
+      };
+    }
+
+    const summary = `${target.summary ?? ""} ${target.project_dir ?? ""}`.toLowerCase();
+    const targetFileCount = "file_count" in target ? target.file_count : target.file_changes.length;
+    const targetMessageCount = "message_count" in target ? target.message_count : target.messages.length;
+    if (targetFileCount > 0 || /fix|build|test|code|bug|实现|修复|构建|测试/.test(summary)) {
+      return {
+        agent: "Codex",
+        reason: locale === "en" ? "File changes or implementation signals detected." : "检测到文件修改或实现类任务信号。",
+      };
+    }
+    if (targetMessageCount >= 30 || /doc|readme|release|summary|文档|总结|说明/.test(summary)) {
+      return {
+        agent: "Claude",
+        reason: locale === "en" ? "Long-context reading or writing looks important." : "更像长上下文阅读、写作或整理任务。",
+      };
+    }
+    if (/search|research|查|检索|资料/.test(summary)) {
+      return {
+        agent: "Gemini",
+        reason: locale === "en" ? "Research and broad synthesis signals detected." : "检测到检索和综合整理信号。",
+      };
+    }
+    return {
+      agent: getAgentLabel(getTopLevelAgent(target.source_agent)),
+      reason: locale === "en" ? "Continuing in the source agent is lowest friction." : "留在来源 agent 继续成本最低。",
+    };
+  }, [latestConversation, locale, selectedConversation]);
+
+  const releaseReadinessItems = useMemo(
+    () => [
+      {
+        label: locale === "en" ? "Version" : "版本号",
+        value: `v${packageInfo.version}`,
+        ok: packageInfo.version === "1.3.0",
+      },
+      {
+        label: locale === "en" ? "Release notes" : "发布说明",
+        value: "docs/releases/v1.3.0.md",
+        ok: true,
+      },
+      {
+        label: locale === "en" ? "Windows parity guide" : "Windows 同步文档",
+        value: "docs/windows-v1.3.0-workbench-implementation.md",
+        ok: true,
+      },
+      {
+        label: locale === "en" ? "Updater channel" : "更新通道",
+        value: "douxy1994/ChatMem",
+        ok: true,
+      },
+    ],
+    [locale],
+  );
+
+  const platformParityRows = useMemo(
+    () => [
+      [locale === "en" ? "Favorites" : "收藏夹", locale === "en" ? "Done on macOS; documented for Windows" : "macOS 已完成；Windows 已有同步文档"],
+      [locale === "en" ? "Summary migration" : "总结式迁移", locale === "en" ? "Shared frontend behavior" : "前端行为可跨平台复用"],
+      [locale === "en" ? "OneDrive/local sync" : "OneDrive/本地同步", locale === "en" ? "Needs Windows smoke test for file locks" : "Windows 端需重点验证文件锁"],
+      [locale === "en" ? "Updater" : "应用内更新", locale === "en" ? "Requires release secrets" : "需要 release secrets"],
+    ],
+    [locale],
+  );
+
   const toggleProjectFilter = (projectDir: string) => {
     setProjectFilters((current) =>
       current.includes(projectDir)
@@ -3468,7 +3723,10 @@ function App() {
 
     setEmptyTrashConfirm({ busy: true, error: null });
     try {
-      const result = await invoke<EmptyTrashResponse>("empty_trash");
+      const result = await invoke<EmptyTrashResponse>("empty_trash", {
+        deleteSyncBackup: appSettings.sync.syncFolder.trim().length > 0,
+        syncFolder: appSettings.sync.syncFolder,
+      });
       setTrashedConversations([]);
       setEmptyTrashConfirm(null);
       await loadTrashConversations();
@@ -5077,25 +5335,82 @@ function App() {
           {favoriteConversations.map((conversation) => {
             const title = normalizeConversationTitle(conversation.summary) || conversation.id;
             const projectDisplay = getConversationProjectDisplay(conversation);
+            const conversationKey = getConversationKey(conversation);
+            const favorite = appSettings.favoriteConversations[conversationKey];
             return (
               <article key={getConversationKey(conversation)} className="trash-card favorite-card">
                 <div className="trash-card-main">
                   <div>
-                    <span className="trash-card-agent">{conversation.source_agent}</span>
+                    <span className="trash-card-agent">
+                      {favorite?.pinned ? (locale === "en" ? "Pinned" : "已置顶") : conversation.source_agent}
+                    </span>
                     <h3 title={title}>{title}</h3>
                   </div>
                   <p title={conversation.project_dir || projectDisplay}>{projectDisplay}</p>
                   <div className="trash-card-meta">
                     <span>{formatDateTime(conversation.updated_at)}</span>
                   </div>
+                  <div className="favorite-edit-grid">
+                    <label>
+                      <span>{locale === "en" ? "Note" : "备注"}</span>
+                      <input
+                        type="text"
+                        value={favorite?.note ?? ""}
+                        placeholder={locale === "en" ? "Why is this important?" : "这段对话为什么重要？"}
+                        onChange={(event) =>
+                          handleUpdateFavoriteConversation(conversationKey, { note: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>{locale === "en" ? "Tags" : "标签"}</span>
+                      <input
+                        type="text"
+                        value={favorite?.tags?.join(", ") ?? ""}
+                        placeholder={locale === "en" ? "release, bugfix" : "发布, 修复"}
+                        onChange={(event) =>
+                          handleUpdateFavoriteConversation(conversationKey, {
+                            tags: event.target.value
+                              .split(",")
+                              .map((tag) => tag.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
                 </div>
                 <div className="favorite-card-actions">
+                  <button
+                    type="button"
+                    className={`btn btn-secondary ${favorite?.pinned ? "favorite-remove-button" : ""}`}
+                    onClick={() =>
+                      handleUpdateFavoriteConversation(conversationKey, {
+                        pinned: !favorite?.pinned,
+                      })
+                    }
+                  >
+                    {favorite?.pinned
+                      ? locale === "en"
+                        ? "Unpin"
+                        : "取消置顶"
+                      : locale === "en"
+                        ? "Pin"
+                        : "置顶"}
+                  </button>
                   <button
                     type="button"
                     className="btn btn-secondary"
                     onClick={() => void handleOpenConversation(conversation)}
                   >
                     {shell.openConversation}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => void handleCopyFavoriteContinuationCard(conversation)}
+                  >
+                    {locale === "en" ? "Copy Card" : "复制继续卡片"}
                   </button>
                   <button
                     type="button"
@@ -5113,17 +5428,289 @@ function App() {
     </div>
   );
 
+  const renderWorkbenchWorkspace = () => (
+    <div className="workbench-page">
+      <header className="workbench-header">
+        <div>
+          <h1>{locale === "en" ? "Control Center" : "工作台"}</h1>
+          <p className="workbench-subtitle">
+            {locale === "en" ? "Continue, organize, and ship faster" : "接续、整理、发布，一页完成"}
+          </p>
+          <p className="workbench-description">
+            {locale === "en"
+              ? "A derived workspace over your local conversations, favorites, memory state, releases, and platform parity."
+              : "基于本地对话、收藏夹、记忆状态、发布信息和跨平台状态自动整理的工作台。"}
+          </p>
+        </div>
+        <div className="workbench-header-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => latestConversation && void handleOpenConversation(latestConversation)}
+            disabled={!latestConversation}
+          >
+            {locale === "en" ? "Resume Latest" : "继续最近任务"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              setShowTrash(false);
+              setShowFavorites(true);
+            }}
+          >
+            {locale === "en" ? "Open Favorites" : "打开收藏夹"}
+          </button>
+        </div>
+      </header>
+
+      <div className="workbench-grid">
+        <section className="workbench-panel workbench-panel-wide">
+          <div className="workbench-panel-header">
+            <span>01</span>
+            <div>
+              <h2>{locale === "en" ? "Continue Work Home" : "继续工作首页"}</h2>
+              <p>{locale === "en" ? "Start from the most recoverable recent work." : "从最近最容易恢复的工作开始。"}</p>
+            </div>
+          </div>
+          {latestConversation ? (
+            <button
+              type="button"
+              className="workbench-list-item"
+              onClick={() => void handleOpenConversation(latestConversation)}
+            >
+              <strong>{normalizeConversationTitle(latestConversation.summary) || latestConversation.id}</strong>
+              <span>{getConversationProjectDisplay(latestConversation)}</span>
+              <em>{formatDistanceToNow(latestConversation.updated_at)}</em>
+            </button>
+          ) : (
+            <div className="inline-empty-state">
+              <div className="inline-empty-body">{shell.noProgressBody}</div>
+            </div>
+          )}
+        </section>
+
+        <section className="workbench-panel">
+          <div className="workbench-panel-header">
+            <span>02</span>
+            <div>
+              <h2>{locale === "en" ? "Favorites+" : "收藏夹增强"}</h2>
+              <p>{locale === "en" ? "Pinned items, notes, tags, and continuation cards." : "支持置顶、备注、标签和收藏继续卡片。"}</p>
+            </div>
+          </div>
+          <div className="workbench-metric-row">
+            <strong>{favoriteConversations.length}</strong>
+            <span>{locale === "en" ? "favorites" : "条收藏"}</span>
+          </div>
+          {favoriteTagSummary.length > 0 ? (
+            <div className="workbench-chip-row">
+              {favoriteTagSummary.map(([tag, count]) => (
+                <span key={tag} className="workbench-chip">
+                  {tag} {count}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p>{locale === "en" ? "Add tags in Favorites to group important work." : "在收藏夹里添加标签后，可以按主题聚合重要工作。"}</p>
+          )}
+        </section>
+
+        <section className="workbench-panel">
+          <div className="workbench-panel-header">
+            <span>03</span>
+            <div>
+              <h2>{locale === "en" ? "Project Timeline" : "项目时间线"}</h2>
+              <p>{locale === "en" ? "Recent project activity grouped by repo path." : "按项目路径聚合最近活动。"}</p>
+            </div>
+          </div>
+          <div className="workbench-list">
+            {workbenchProjectTimeline.slice(0, 4).map((project) => (
+              <button
+                key={project.projectDir}
+                type="button"
+                className="workbench-list-item"
+                onClick={() => void handleOpenConversation(project.latestConversation)}
+              >
+                <strong>{project.label}</strong>
+                <span>
+                  {project.count} {locale === "en" ? "conversations" : "段对话"} · {project.fileCount} files
+                </span>
+                <em>{formatDistanceToNow(project.latestAt)}</em>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="workbench-panel">
+          <div className="workbench-panel-header">
+            <span>04</span>
+            <div>
+              <h2>{locale === "en" ? "Agent Recommendation" : "跨 agent 接续推荐"}</h2>
+              <p>{locale === "en" ? "A simple routing hint from conversation signals." : "根据对话信号给出接续 agent 建议。"}</p>
+            </div>
+          </div>
+          <div className="workbench-callout">
+            <strong>{workbenchAgentRecommendation.agent}</strong>
+            <p>{workbenchAgentRecommendation.reason}</p>
+            <span className="workbench-callout-meta">
+              {latestConversation
+                ? `${locale === "en" ? "Target" : "接续目标"} · ${
+                    normalizeConversationTitle(latestConversation.summary) || latestConversation.id
+                  }`
+                : locale === "en"
+                  ? "No recent conversation available"
+                  : "暂无最近对话"}
+            </span>
+          </div>
+        </section>
+
+        <section className="workbench-panel">
+          <div className="workbench-panel-header">
+            <span>05</span>
+            <div>
+              <h2>{locale === "en" ? "Project Memory Drafts" : "项目记忆沉淀"}</h2>
+              <p>{locale === "en" ? "Approved rules, pending candidates, and wiki pages." : "汇总已批准规则、候选记忆和 Wiki 页面。"}</p>
+            </div>
+          </div>
+          <div className="workbench-stat-grid">
+            <div><strong>{repoMemories.length}</strong><span>{locale === "en" ? "rules" : "规则"}</span></div>
+            <div><strong>{memoryCandidates.length}</strong><span>{locale === "en" ? "pending" : "待确认"}</span></div>
+            <div><strong>{wikiPages.length}</strong><span>Wiki</span></div>
+          </div>
+          {repoMemories.length + memoryCandidates.length + wikiPages.length === 0 ? (
+            <div className="workbench-empty-note">
+              {locale === "en"
+                ? "Open a project conversation; the memory summary stays visible in the detail page."
+                : "打开某个项目对话后，详情页会继续显示这里的仓库规则、候选记忆和 Wiki 沉淀。"}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="workbench-panel workbench-panel-wide">
+          <div className="workbench-panel-header">
+            <span>06</span>
+            <div>
+              <h2>{locale === "en" ? "Smart Search" : "更强搜索"}</h2>
+              <p>{locale === "en" ? "Search results are grouped with project and recency cues." : "搜索结果同时展示项目和新近程度线索。"}</p>
+            </div>
+          </div>
+          <div className="workbench-list">
+            {workbenchSearchMatches.map((conversation) => (
+              <button
+                key={`smart-${getConversationKey(conversation)}`}
+                type="button"
+                className="workbench-list-item"
+                onClick={() => void handleOpenConversation(conversation)}
+              >
+                <strong>{normalizeConversationTitle(conversation.summary) || conversation.id}</strong>
+                <span>{getConversationProjectDisplay(conversation)}</span>
+                <em>{formatDistanceToNow(conversation.updated_at)}</em>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="workbench-panel">
+          <div className="workbench-panel-header">
+            <span>07</span>
+            <div>
+              <h2>{locale === "en" ? "Release Assistant" : "发布/构建助手"}</h2>
+              <p>{locale === "en" ? "Checks release surfaces before shipping." : "发布前检查版本、说明、文档和更新通道。"}</p>
+            </div>
+          </div>
+          <div className="workbench-check-list">
+            {releaseReadinessItems.map((item) => (
+              <details key={item.label} className="workbench-check-detail-row">
+                <summary className="workbench-check-row">
+                  <span className={item.ok ? "is-ok" : "is-warning"}>{item.ok ? "OK" : "!"}</span>
+                  <strong>{item.label}</strong>
+                  <em title={item.value}>{item.value}</em>
+                </summary>
+                <div className="workbench-check-detail-body">
+                  <span>{item.label}</span>
+                  <code>{item.value}</code>
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section className="workbench-panel">
+          <div className="workbench-panel-header">
+            <span>08</span>
+            <div>
+              <h2>{locale === "en" ? "Conversation Quality" : "对话质量整理"}</h2>
+              <p>{locale === "en" ? "High-signal conversations are surfaced first." : "优先展示包含文件、长上下文或收藏信号的对话。"}</p>
+            </div>
+          </div>
+          <div className="workbench-list">
+            {highSignalConversations.slice(0, 3).map((conversation) => (
+              <button
+                key={`quality-${getConversationKey(conversation)}`}
+                type="button"
+                className="workbench-list-item"
+                onClick={() => void handleOpenConversation(conversation)}
+              >
+                <strong>{normalizeConversationTitle(conversation.summary) || conversation.id}</strong>
+                <span>{conversation.message_count} messages · {conversation.file_count} files</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="workbench-panel">
+          <div className="workbench-panel-header">
+            <span>09</span>
+            <div>
+              <h2>{locale === "en" ? "Privacy Cleanup" : "本地隐私与清理"}</h2>
+              <p>{locale === "en" ? "Low-signal old conversations are only listed for review." : "只列出低信号旧对话供你确认，不自动删除。"}</p>
+            </div>
+          </div>
+          {cleanupCandidates.length === 0 ? (
+            <p>{locale === "en" ? "No obvious cleanup candidates." : "暂时没有明显清理候选。"}</p>
+          ) : (
+            <div className="workbench-list">
+              {cleanupCandidates.map((conversation) => (
+                <button
+                  key={`cleanup-${getConversationKey(conversation)}`}
+                  type="button"
+                  className="workbench-list-item"
+                  onClick={() => void handleOpenConversation(conversation)}
+                >
+                  <strong>{normalizeConversationTitle(conversation.summary) || conversation.id}</strong>
+                  <span>{formatDateTime(conversation.updated_at)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="workbench-panel workbench-panel-wide">
+          <div className="workbench-panel-header">
+            <span>10</span>
+            <div>
+              <h2>{locale === "en" ? "Windows/macOS Parity" : "Windows/macOS 对等状态"}</h2>
+              <p>{locale === "en" ? "A quick status table for cross-platform handoff." : "用于 macOS 先做、Windows 后同步的状态表。"}</p>
+            </div>
+          </div>
+          <div className="workbench-parity-list">
+            {platformParityRows.map(([feature, status]) => (
+              <div key={feature} className="workbench-parity-row">
+                <strong>{feature}</strong>
+                <span>{status}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+
   const renderTrashConfirmModal = () => {
     if (!trashConfirm) {
       return null;
     }
 
-    const remoteAvailable =
-      appSettings.sync.provider === "webdav" &&
-      appSettings.sync.webdavHost.trim().length > 0 &&
-      appSettings.sync.username.trim().length > 0;
-    const syncFolderAvailable =
-      appSettings.sync.syncFolder.trim().length > 0;
     const previewTargets = trashConfirm.targets.slice(0, 4);
 
     return (
@@ -5157,50 +5744,9 @@ function App() {
               ) : null}
             </div>
 
-            <label className={`trash-remote-option ${remoteAvailable ? "" : "is-disabled"}`}>
-              <input
-                type="checkbox"
-                checked={trashConfirm.deleteRemoteBackup && remoteAvailable}
-                disabled={!remoteAvailable || trashConfirm.busy}
-                onChange={(event) =>
-                  setTrashConfirm((current) =>
-                    current
-                      ? {
-                          ...current,
-                          deleteRemoteBackup: event.target.checked,
-                          error: null,
-                        }
-                      : current,
-                  )
-                }
-              />
-              <span>{shell.confirmTrashRemoteBackup}</span>
-            </label>
-            {!remoteAvailable ? (
-              <p className="trash-remote-note">{shell.confirmTrashRemoteUnavailable}</p>
-            ) : null}
-            <label className={`trash-remote-option ${syncFolderAvailable ? "" : "is-disabled"}`}>
-              <input
-                type="checkbox"
-                checked={trashConfirm.deleteSyncBackup && syncFolderAvailable}
-                disabled={!syncFolderAvailable || trashConfirm.busy}
-                onChange={(event) =>
-                  setTrashConfirm((current) =>
-                    current
-                      ? {
-                          ...current,
-                          deleteSyncBackup: event.target.checked,
-                          error: null,
-                        }
-                      : current,
-                  )
-                }
-              />
-              <span>{shell.confirmTrashSyncBackup}</span>
-            </label>
-            {!syncFolderAvailable ? (
-              <p className="trash-remote-note">{shell.confirmTrashSyncUnavailable}</p>
-            ) : null}
+            <p className="settings-notice trash-preserve-notice">
+              {shell.confirmTrashSyncPreserved}
+            </p>
             {trashConfirm.error ? (
               <p className="settings-notice is-danger">{trashConfirm.error}</p>
             ) : null}
@@ -5322,15 +5868,7 @@ function App() {
 
   const renderWorkspace = () => {
     if (!selectedConversation) {
-      return (
-        <div className="conversation-empty-state">
-          <div className="empty-state-icon brand-empty-icon" aria-hidden="true">
-            <img src={brandIcon} alt="" />
-          </div>
-          <h1>{shell.chooseConversation}</h1>
-          <div className="empty-state-text">{shell.noProgressBody}</div>
-        </div>
-      );
+      return renderWorkbenchWorkspace();
     }
 
     const conversationTitle =
@@ -5339,6 +5877,19 @@ function App() {
     const selectedConversationProjectDisplay = getConversationProjectDisplay(selectedConversation);
     const memoryAttentionCount = memoryCandidates.length;
     const currentWorkspaceView: WorkspaceView = activeRepoRoot ? workspaceView : "conversation";
+    const returnToWorkbench = () => {
+      setSelectedConversation(null);
+      setWorkspaceView("conversation");
+    };
+    const openProjectMemoryView = () => {
+      if (!activeRepoRoot) {
+        return;
+      }
+      handleMemoryDrawerTabChange(
+        memoryAttentionCount > 0 ? "inbox" : wikiPages.length > 0 ? "wiki" : "approved",
+      );
+      setMemoryDrawerOpen(true);
+    };
     const localHistoryPanel = activeRepoRoot ? (
       <ProjectIndexStatus
         health={repoMemoryHealth}
@@ -5480,11 +6031,58 @@ function App() {
               </div>
             </div>
 
+            <section className="conversation-memory-summary" aria-label={locale === "en" ? "Project memory summary" : "项目记忆沉淀"}>
+              <div className="workbench-panel-header">
+                <span>05</span>
+                <div>
+                  <h2>{locale === "en" ? "Project Memory Drafts" : "项目记忆沉淀"}</h2>
+                  <p>
+                    {activeRepoRoot
+                      ? activeRepoRoot
+                      : locale === "en"
+                        ? "No project path detected for this conversation."
+                        : "这段对话暂未识别到项目路径。"}
+                  </p>
+                </div>
+              </div>
+              <div className="workbench-stat-grid">
+                <div><strong>{repoMemories.length}</strong><span>{locale === "en" ? "rules" : "规则"}</span></div>
+                <div><strong>{memoryCandidates.length}</strong><span>{locale === "en" ? "pending" : "待确认"}</span></div>
+                <div><strong>{wikiPages.length}</strong><span>Wiki</span></div>
+              </div>
+              {repoMemories.length + memoryCandidates.length + wikiPages.length === 0 ? (
+                <div className="workbench-empty-note">
+                  {locale === "en"
+                    ? "Memory data for this project has not been captured yet."
+                    : "这个项目暂时还没有可显示的规则、候选记忆或 Wiki 页面。"}
+                </div>
+              ) : null}
+              {localHistoryPanel ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary conversation-memory-action"
+                  onClick={openProjectMemoryView}
+                >
+                  {locale === "en" ? "Open Memory View" : "打开项目记忆视图"}
+                </button>
+              ) : null}
+            </section>
+
             <div className="conversation-content-grid">
               <ConversationDetail conversation={selectedConversation} />
             </div>
           </div>
         )}
+        <button
+          type="button"
+          className="workspace-return-float"
+          onClick={returnToWorkbench}
+          aria-label={locale === "en" ? "Return to Workbench" : "返回工作台"}
+          title={locale === "en" ? "Return to Workbench" : "返回工作台"}
+        >
+          <WindowButtonIcon type="back" />
+          <span>{locale === "en" ? "Workbench" : "工作台"}</span>
+        </button>
       </div>
     );
   };
@@ -5602,7 +6200,7 @@ function App() {
 
   return (
     <div className={`app-shell ${isWindowFilled ? "is-window-filled" : ""}`} style={appShellStyle}>
-      <header className="app-topbar" style={{ paddingLeft: 78 }}>
+      <header className="app-topbar">
         <div className="topbar-center">
           <img className="topbar-app-icon" src={brandIcon} />
           <span className="topbar-app-name">ChatMem</span>
@@ -5720,7 +6318,7 @@ function App() {
                         }
                       }}
                     >
-                      <WindowButtonIcon type="organize" />
+                      <WindowButtonIcon type="manageGroups" />
                       <span className="sidebar-action-tooltip" aria-hidden="true">
                         {mgSelectMode ? "取消管理分组" : "管理分组"}
                       </span>
@@ -6078,21 +6676,6 @@ function App() {
                   <span className="utility-nav-count">{trashedConversations.length}</span>
                 ) : null}
               </button>
-
-              <button
-                type="button"
-                className={`utility-nav-button ${showSettings ? "active" : ""}`}
-                aria-label={shell.settings}
-                onClick={() => {
-                  setShowFavorites(false);
-                  setShowTrash(false);
-                  setShowAbout(false);
-                  setShowSettings(true);
-                }}
-              >
-                <WindowButtonIcon type="settings" />
-                <span className="utility-nav-label">{shell.settings}</span>
-              </button>
             </div>
             <span className="utility-nav-version">v{packageInfo.version}</span>
           </nav>
@@ -6100,7 +6683,11 @@ function App() {
 
         {!showSettings && !showAbout ? (
           <button
+            type="button"
             className={`sidebar-collapse-float ${sidebarCollapsed ? "is-collapsed" : ""}`}
+            aria-label={sidebarCollapsed ? shell.showSidebar : shell.collapseSidebar}
+            aria-pressed={sidebarCollapsed}
+            title={sidebarCollapsed ? shell.showSidebar : shell.collapseSidebar}
             onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
           >
             <WindowButtonIcon type="sidebar" />

@@ -66,6 +66,9 @@ export type FavoriteConversationSnapshot = {
   createdAt: string;
   updatedAt: string;
   summary: string | null;
+  note?: string;
+  tags?: string[];
+  pinned?: boolean;
 };
 
 export type AppSettings = {
@@ -197,6 +200,11 @@ function normalizeFavoriteConversations(value: unknown): Record<string, Favorite
             createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : "",
             updatedAt: typeof snapshot.updatedAt === "string" ? snapshot.updatedAt : "",
             summary: typeof snapshot.summary === "string" ? snapshot.summary : null,
+            note: typeof snapshot.note === "string" ? snapshot.note : "",
+            tags: Array.isArray(snapshot.tags)
+              ? snapshot.tags.filter((tag): tag is string => typeof tag === "string")
+              : [],
+            pinned: snapshot.pinned === true,
           },
         ],
       ];

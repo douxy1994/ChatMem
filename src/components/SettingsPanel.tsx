@@ -736,10 +736,11 @@ export default function SettingsPanel({
           </div>
 
           <div className="sync-method-row">
-            <label className="sync-method-label">
+            <label className="sync-method-label" htmlFor="settings-sync-provider">
               <span>{syncCopy.methodLabel}</span>
             </label>
             <select
+              id="settings-sync-provider"
               className="settings-select"
               value={syncSettings.provider}
               onChange={(event) =>

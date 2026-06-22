@@ -15,12 +15,20 @@ const mockStartDragging = vi.fn();
 const mockIsMaximized = vi.fn();
 const mockIsFullscreen = vi.fn();
 const mockOnResized = vi.fn();
-const appVersionPattern = /ChatMem v\d+\.\d+\.\d+/;
+const mockEventListeners = new Map<string, (event: unknown) => void>();
+const appVersionPattern = /^v\d+\.\d+\.\d+$/;
 const longConversationTitle =
   "Review the latest changes in D:\\VSP\\agentswap-gui\\.worktrees\\chatmem-control-plane-v2 and focus on concrete risks instead of generic advice.";
 
 vi.mock("@tauri-apps/api/tauri", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (eventName: string, handler: (event: unknown) => void) => {
+    mockEventListeners.set(eventName, handler);
+    return () => mockEventListeners.delete(eventName);
+  }),
 }));
 
 vi.mock("@tauri-apps/api/updater", () => ({
@@ -68,6 +76,15 @@ async function openLocalHistoryView() {
   return historyTab;
 }
 
+async function openSettingsFromMenu() {
+  await waitFor(() => {
+    expect(mockEventListeners.has("open-settings")).toBe(true);
+  });
+  await act(async () => {
+    mockEventListeners.get("open-settings")?.({});
+  });
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -98,6 +115,7 @@ describe("App", () => {
     mockIsMaximized.mockResolvedValue(false);
     mockIsFullscreen.mockResolvedValue(false);
     mockOnResized.mockResolvedValue(vi.fn());
+    mockEventListeners.clear();
 
     mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
       if (command === "list_conversations") {
@@ -277,7 +295,7 @@ describe("App", () => {
     mockRelaunch.mockResolvedValue(undefined);
   });
 
-  it("renders a simple conversation manager shell without dashboard navigation", async () => {
+  it("renders the Workbench as the default conversation manager home", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -285,15 +303,15 @@ describe("App", () => {
 
     renderApp();
 
-    expect(await screen.findByText(appVersionPattern)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Continue Work" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Needs Review" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "History" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Help" })).toBeNull();
+    expect((await screen.findAllByText(appVersionPattern)).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Control Center" })).toBeTruthy();
+    expect(screen.getByText("Continue, organize, and ship faster")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Resume Latest" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Favorites" })).toBeTruthy();
     expect(screen.getByText("Projects")).toBeTruthy();
     expect(screen.queryByText("Chats")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Choose a conversation" })).toBeTruthy();
-    expect(document.querySelector(".conversation-empty-state .brand-empty-icon img")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Choose a conversation" })).toBeNull();
+    expect(document.querySelector(".workbench-page")).toBeTruthy();
   });
 
   it("silently auto-captures the selected conversation when memory capture is enabled", async () => {
@@ -354,7 +372,7 @@ describe("App", () => {
 
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    await openSettingsFromMenu();
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeTruthy();
 
     const settingsPanel = document.querySelector(".settings-panel");
@@ -365,10 +383,10 @@ describe("App", () => {
     expect(screen.queryByRole("heading", { name: "Choose a conversation" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(await screen.findByRole("heading", { name: "Choose a conversation" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Control Center" })).toBeTruthy();
   });
 
-  it("renders the 1.2.2 version without an About utility entry", async () => {
+  it("renders the 1.3.0 version without an About utility entry", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -376,7 +394,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect(await screen.findByText("v1.2.2")).toBeTruthy();
+    expect((await screen.findAllByText("v1.3.0")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "About us" })).toBeNull();
   });
 
@@ -398,7 +416,15 @@ describe("App", () => {
     });
     expect(within(dialog).getByText("Debug session")).toBeTruthy();
     expect(within(dialog).getByText("Recovery snapshots are kept for 14 days.")).toBeTruthy();
+    expect(within(dialog).queryByText("Also delete OneDrive sync backup")).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Move to Trash" }));
+    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm Delete" });
+    expect(
+      within(deleteDialog).getByText(
+        "This moves the local conversation into Trash and keeps sync copies recoverable until Trash is emptied or expires.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Confirm Delete" }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("trash_conversation", {
@@ -412,6 +438,8 @@ describe("App", () => {
         remotePath: "chatmem",
         username: "",
         password: "",
+        deleteSyncBackup: false,
+        syncFolder: "",
       });
     });
     expect(window.confirm).not.toHaveBeenCalled();
@@ -433,6 +461,9 @@ describe("App", () => {
       sourceAgent: "claude",
       projectDir: "D:/VSP/demo",
       summary: "Debug session",
+      note: "",
+      tags: [],
+      pinned: false,
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
@@ -465,6 +496,8 @@ describe("App", () => {
     expect(within(dialog).getByText("Debug session")).toBeTruthy();
     expect(within(dialog).getByText("Memory investigation")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Move to Trash" }));
+    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm Delete" });
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Confirm Delete" }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("trash_conversation", {
@@ -478,6 +511,8 @@ describe("App", () => {
         remotePath: "chatmem",
         username: "",
         password: "",
+        deleteSyncBackup: false,
+        syncFolder: "",
       });
       expect(mockInvoke).toHaveBeenCalledWith("trash_conversation", {
         agent: "claude",
@@ -490,6 +525,8 @@ describe("App", () => {
         remotePath: "chatmem",
         username: "",
         password: "",
+        deleteSyncBackup: false,
+        syncFolder: "",
       });
     });
     expect(window.confirm).not.toHaveBeenCalled();
@@ -549,7 +586,7 @@ describe("App", () => {
     renderApp();
 
     fireEvent.click(await screen.findByRole("button", { name: "Trash" }));
-    expect(await screen.findByText("Debug session")).toBeTruthy();
+    expect((await screen.findAllByText("Debug session")).length).toBeGreaterThan(0);
 
     const trashActions = document.querySelector(".trash-page-actions");
     expect(trashActions).toBeTruthy();
@@ -560,14 +597,17 @@ describe("App", () => {
     const dialog = await screen.findByRole("dialog", { name: "Empty Trash?" });
     expect(
       within(dialog).getByText(
-        "This permanently removes 1 recovery snapshot. You will not be able to restore it from ChatMem.",
+        "This permanently removes 1 recovery snapshot and any configured OneDrive sync copies. You will not be able to restore it from ChatMem.",
       ),
     ).toBeTruthy();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Empty Trash" }));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("empty_trash");
+      expect(mockInvoke).toHaveBeenCalledWith("empty_trash", {
+        deleteSyncBackup: false,
+        syncFolder: "",
+      });
       expect(screen.getByText("Trash is empty")).toBeTruthy();
     });
     expect(window.confirm).not.toHaveBeenCalled();
@@ -581,7 +621,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect(await screen.findByText("Debug session")).toBeTruthy();
+    expect((await screen.findAllByText("Debug session")).length).toBeGreaterThan(0);
     const appBody = document.querySelector(".app-body");
     expect(appBody?.className).not.toContain("is-sidebar-collapsed");
 
@@ -654,7 +694,7 @@ describe("App", () => {
 
     renderApp();
 
-    await screen.findByText("Prefixed project path");
+    expect((await screen.findAllByText("Prefixed project path")).length).toBeGreaterThan(0);
 
     await waitFor(() => {
       const projectGroups = document.querySelectorAll(".project-group");
@@ -756,7 +796,7 @@ describe("App", () => {
     renderApp();
 
     await selectConversationSource("codex");
-    await screen.findByText("Where are our conversation files?");
+    expect((await screen.findAllByText("Where are our conversation files?")).length).toBeGreaterThan(0);
 
     await waitFor(() => {
       const projectGroups = Array.from(document.querySelectorAll(".project-group"));
@@ -783,22 +823,22 @@ describe("App", () => {
     });
   });
 
-  it("switches the conversation source to OpenCode", async () => {
+  it("switches the conversation source to Hermes", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
     );
     mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
       if (command === "list_conversations") {
-        if (payload?.agent === "opencode") {
+        if (payload?.agent === "hermes") {
           return [
             {
-              id: "ses_opencode_001",
-              source_agent: "opencode",
-              project_dir: "D:/VSP/opencode-demo",
+              id: "ses_hermes_001",
+              source_agent: "hermes",
+              project_dir: "D:/VSP/hermes-demo",
               created_at: "2026-04-26T08:00:00Z",
               updated_at: "2026-04-26T09:00:00Z",
-              summary: "OpenCode project memory",
+              summary: "Hermes project memory",
               message_count: 6,
               file_count: 2,
             },
@@ -808,16 +848,16 @@ describe("App", () => {
         return [];
       }
 
-      if (command === "read_conversation" && payload?.agent === "opencode") {
+      if (command === "read_conversation" && payload?.agent === "hermes") {
         return {
-          id: "ses_opencode_001",
-          source_agent: "opencode",
-          project_dir: "D:/VSP/opencode-demo",
+          id: "ses_hermes_001",
+          source_agent: "hermes",
+          project_dir: "D:/VSP/hermes-demo",
           created_at: "2026-04-26T08:00:00Z",
           updated_at: "2026-04-26T09:00:00Z",
-          summary: "OpenCode project memory",
-          storage_path: "C:/Users/demo/AppData/Local/opencode/opencode.db",
-          resume_command: "opencode --session ses_opencode_001",
+          summary: "Hermes project memory",
+          storage_path: "C:/Users/demo/.hermes/state.db",
+          resume_command: "hermes resume ses_hermes_001",
           messages: [],
           file_changes: [],
         };
@@ -840,15 +880,17 @@ describe("App", () => {
 
     renderApp();
 
-    await selectConversationSource("opencode");
-    await screen.findByText("OpenCode project memory");
+    await selectConversationSource("hermes");
+    expect((await screen.findAllByText("Hermes project memory")).length).toBeGreaterThan(0);
 
-    expect(mockInvoke).toHaveBeenCalledWith("list_conversations", { agent: "opencode" });
-    fireEvent.click(screen.getByText("OpenCode project memory"));
-    expect(await screen.findByText("Current OPENCODE conversation")).toBeTruthy();
+    expect(mockInvoke).toHaveBeenCalledWith("list_conversations", { agent: "hermes" });
+    const sidebar = document.querySelector(".sidebar");
+    expect(sidebar).toBeTruthy();
+    fireEvent.click((await within(sidebar as HTMLElement).findAllByText("Hermes project memory"))[0]);
+    expect(await screen.findByText("Current HERMES conversation")).toBeTruthy();
   });
 
-  it("uses one compact source selector with five top-level sources", async () => {
+  it("uses one compact source selector with four top-level sources", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -892,9 +934,8 @@ describe("App", () => {
     expect(Array.from(sourceSelect.options).map((option) => option.textContent)).toEqual([
       "Claude",
       "Codex",
-      "Gemini",
-      "OpenCode",
       "ZCode",
+      "Hermes",
     ]);
     expect(screen.queryByRole("button", { name: "ZCode Claude" })).toBeNull();
 
@@ -957,7 +998,7 @@ describe("App", () => {
 
     renderApp();
     await selectConversationSource("zcode");
-    await screen.findByText("ZCode Claude project work");
+    expect((await screen.findAllByText("ZCode Claude project work")).length).toBeGreaterThan(0);
 
     const cliGroups = Array.from(document.querySelectorAll(".zcode-cli-group"));
     expect(cliGroups).toHaveLength(2);
@@ -1033,7 +1074,7 @@ describe("App", () => {
     ).toEqual(["M10.5 4H12v1.5", "M5.5 12H4v-1.5"]);
   });
 
-  it("starts native window dragging from the top bar without hijacking controls", async () => {
+  it("keeps the top bar drag space from hijacking controls", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -1041,15 +1082,13 @@ describe("App", () => {
 
     renderApp();
 
-    const title = await screen.findByText(appVersionPattern);
+    const title = await screen.findByText("ChatMem");
     const topbar = title.closest(".app-topbar");
     expect(topbar).toBeTruthy();
+    expect(topbar?.querySelector(".topbar-drag-space")).toBeTruthy();
 
-    fireEvent.mouseDown(topbar!, { button: 0 });
-    expect(mockStartDragging).toHaveBeenCalledTimes(1);
-
-    fireEvent.mouseDown(screen.getByRole("button", { name: "Settings" }), { button: 0 });
-    expect(mockStartDragging).toHaveBeenCalledTimes(1);
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Favorites" }), { button: 0 });
+    expect(mockStartDragging).not.toHaveBeenCalled();
   });
 
   it("removes the floating shell when the native window is maximized", async () => {
@@ -1061,7 +1100,7 @@ describe("App", () => {
 
     const { container } = renderApp();
 
-    await screen.findByText(appVersionPattern);
+    expect((await screen.findAllByText(appVersionPattern)).length).toBeGreaterThan(0);
 
     await waitFor(() => {
       expect(container.querySelector(".app-shell")?.classList.contains("is-window-filled")).toBe(
@@ -2392,7 +2431,7 @@ describe("App", () => {
 
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    await openSettingsFromMenu();
     fireEvent.click(await screen.findByRole("button", { name: "Check for updates" }));
 
     await waitFor(() => {

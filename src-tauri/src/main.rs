@@ -33,7 +33,7 @@ use chatmem::chatmem_memory::{
 };
 use rmcp::{transport::stdio, ServiceExt};
 use serde::{Deserialize, Serialize};
-use tauri::command;
+use tauri::{command, AboutMetadata, CustomMenuItem, Menu, MenuItem, Submenu};
 use tauri::Manager;
 
 // Import AgentSwap adapters
@@ -42,14 +42,15 @@ use agentswap_codex::CodexAdapter;
 use agentswap_core::adapter::AgentAdapter;
 use agentswap_core::types::{AgentKind, Conversation, ConversationSummary, Message};
 use agentswap_gemini::GeminiAdapter;
+use agentswap_hermes::adapter::HermesAdapter;
 use agentswap_opencode::OpenCodeAdapter;
 use agentswap_zcode::{
     ZCodeAdapter, ZCodeClaudeAdapter, ZCodeCodexAdapter, ZCodeGeminiAdapter, ZCodeOpenCodeAdapter,
 };
-use agentswap_hermes::adapter::HermesAdapter;
 
 const DEFAULT_TRASH_RETENTION_DAYS: i64 = 14;
 const AGENT_KEYS: &[&str] = &["claude", "codex", "zcode", "hermes"];
+const MENU_OPEN_SETTINGS: &str = "open_settings";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ConversationSummaryResponse {
@@ -199,6 +200,12 @@ struct FavoriteConversationPayload {
     #[serde(default)]
     updated_at: String,
     summary: Option<String>,
+    #[serde(default)]
+    note: String,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -884,6 +891,11 @@ fn find_trash_record_path(trash_id: &str) -> Result<PathBuf, String> {
 fn remove_expired_trash_records() -> Result<Vec<String>, String> {
     let now = chrono::Utc::now();
     let mut removed = Vec::new();
+    let sync_folder = read_app_settings_from_disk()
+        .ok()
+        .flatten()
+        .map(|settings| settings.sync.sync_folder)
+        .filter(|folder| !folder.trim().is_empty());
 
     for path in list_trash_record_paths()? {
         let record = match read_trash_record(&path) {
@@ -895,6 +907,9 @@ fn remove_expired_trash_records() -> Result<Vec<String>, String> {
             Err(_) => continue,
         };
         if expires_at <= now {
+            if let Some(folder) = sync_folder.as_deref() {
+                delete_sync_backup_file(&record.source_agent, &record.original_id, folder)?;
+            }
             fs::remove_file(&path).map_err(|error| {
                 format!("Cannot purge Trash record {}: {error}", path.display())
             })?;
@@ -903,6 +918,26 @@ fn remove_expired_trash_records() -> Result<Vec<String>, String> {
     }
 
     Ok(removed)
+}
+
+fn delete_sync_backup_file(agent: &str, id: &str, sync_folder: &str) -> Result<bool, String> {
+    if sync_folder.trim().is_empty() {
+        return Ok(false);
+    }
+
+    let safe_name = local_sync::id_to_filename(id);
+    let sync_file = std::path::PathBuf::from(sync_folder)
+        .join("conversations")
+        .join(agent)
+        .join(format!("{safe_name}.json"));
+
+    if !sync_file.exists() {
+        return Ok(false);
+    }
+
+    fs::remove_file(&sync_file)
+        .map_err(|error| format!("Cannot remove sync backup {}: {error}", sync_file.display()))?;
+    Ok(true)
 }
 
 fn remove_empty_trash_agent_dirs() -> Result<(), String> {
@@ -1686,20 +1721,39 @@ async fn list_conversations(agent: String) -> Result<Vec<ConversationSummaryResp
 
     // After memory store reading, read sync folder directly
     let settings = read_app_settings_from_disk().ok().flatten();
-    let sync_folder = settings.as_ref().map(|s| s.sync.sync_folder.clone()).unwrap_or_default();
+    let sync_folder = settings
+        .as_ref()
+        .map(|s| s.sync.sync_folder.clone())
+        .unwrap_or_default();
     if !sync_folder.is_empty() {
         let remote = local_sync::read_remote_conversations(std::path::Path::new(&sync_folder));
         for ((remote_agent, remote_id), (updated_at, body)) in &remote {
-            if remote_agent != &agent { continue; }
-            if seen_ids.contains(remote_id) { continue; }
-            let (project_dir, summary, msg_count) = if let Ok(val) = serde_json::from_slice::<serde_json::Value>(body) {
-                let pd = val.get("project_dir").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let sm = val.get("summary").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let mc = val.get("messages").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
-                (pd, sm, mc)
-            } else {
-                (String::new(), None, 0)
-            };
+            if remote_agent != &agent {
+                continue;
+            }
+            if seen_ids.contains(remote_id) {
+                continue;
+            }
+            let (project_dir, summary, msg_count) =
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(body) {
+                    let pd = val
+                        .get("project_dir")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let sm = val
+                        .get("summary")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let mc = val
+                        .get("messages")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    (pd, sm, mc)
+                } else {
+                    (String::new(), None, 0)
+                };
             seen_ids.insert(remote_id.clone());
             results.push(ConversationSummaryResponse {
                 id: remote_id.clone(),
@@ -1774,7 +1828,9 @@ async fn read_conversation(agent: String, id: String) -> Result<ConversationResp
                 .map(|s| s.sync.sync_folder.clone())
                 .unwrap_or_default();
             if sync_folder.is_empty() {
-                return Err(format!("Conversation {id} not found in local storage or sync folder"));
+                return Err(format!(
+                    "Conversation {id} not found in local storage or sync folder"
+                ));
             }
             let safe_name = local_sync::id_to_filename(&id);
             let file_path = std::path::PathBuf::from(&sync_folder)
@@ -1782,7 +1838,9 @@ async fn read_conversation(agent: String, id: String) -> Result<ConversationResp
                 .join(&agent)
                 .join(format!("{safe_name}.json"));
             if !file_path.exists() {
-                return Err(format!("Conversation {id} not found in local storage or sync folder"));
+                return Err(format!(
+                    "Conversation {id} not found in local storage or sync folder"
+                ));
             }
             let body = std::fs::read(&file_path)
                 .map_err(|e| format!("Failed to read synced conversation: {e}"))?;
@@ -1864,9 +1922,11 @@ async fn migrate_conversation(
 
 #[command]
 async fn delete_conversation(agent: String, id: String) -> Result<(), String> {
-    trash_conversation(agent, id, None, None, None, None, None, None, None, None, None, None)
-        .await
-        .map(|_| ())
+    trash_conversation(
+        agent, id, None, None, None, None, None, None, None, None, None, None,
+    )
+    .await
+    .map(|_| ())
 }
 
 #[command]
@@ -1979,7 +2039,13 @@ async fn trash_conversation(
     };
     let record_path = write_trash_record(&record)?;
 
-    let should_delete_remote = delete_remote_backup.unwrap_or(false);
+    if delete_remote_backup.unwrap_or(false) {
+        record.warnings.push(
+            "Cloud backup was preserved because conversations in Trash remain recoverable."
+                .to_string(),
+        );
+    }
+    let should_delete_remote = false;
     let mut remote_manifest_update: Option<(reqwest::Client, reqwest::Url, WebDavDeleteSettings)> =
         None;
 
@@ -2013,8 +2079,14 @@ async fn trash_conversation(
         remote_manifest_update = Some((client, remote_url, settings));
     }
 
-    // Delete from OneDrive sync folder if requested
-    let should_delete_sync = delete_sync_backup.unwrap_or(false);
+    // Keep OneDrive/local sync copies while the Trash record is recoverable.
+    if delete_sync_backup.unwrap_or(false) {
+        record.warnings.push(
+            "Sync backup was preserved because conversations in Trash remain recoverable."
+                .to_string(),
+        );
+    }
+    let should_delete_sync = false;
     if should_delete_sync {
         if let Some(ref folder) = sync_folder {
             if !folder.is_empty() {
@@ -2025,7 +2097,9 @@ async fn trash_conversation(
                     .join(format!("{safe_name}.json"));
                 if sync_file.exists() {
                     if let Err(e) = fs::remove_file(&sync_file) {
-                        record.warnings.push(format!("Failed to delete sync backup: {e}"));
+                        record
+                            .warnings
+                            .push(format!("Failed to delete sync backup: {e}"));
                     } else {
                         record.remote_backup_deleted = true;
                     }
@@ -2065,23 +2139,21 @@ async fn trash_conversation(
 async fn delete_memory_conversation(
     agent: String,
     id: String,
-    _delete_sync_backup: Option<bool>,
+    delete_sync_backup: Option<bool>,
 ) -> Result<(), String> {
-    // 1. Always delete from sync folder
-    if let Ok(Some(settings)) = read_app_settings_from_disk() {
-        let sync_folder = settings.sync.sync_folder.clone();
-        if !sync_folder.is_empty() {
-            let safe_name = local_sync::id_to_filename(&id);
-            let sync_file = std::path::PathBuf::from(&sync_folder)
-                .join("conversations").join(&agent).join(format!("{safe_name}.json"));
-            if sync_file.exists() {
-                let _ = fs::remove_file(&sync_file);
+    // 1. Delete from sync folder only for final destructive deletion paths.
+    if delete_sync_backup.unwrap_or(false) {
+        if let Ok(Some(settings)) = read_app_settings_from_disk() {
+            let sync_folder = settings.sync.sync_folder.clone();
+            if !sync_folder.is_empty() {
+                let _ = delete_sync_backup_file(&agent, &id, &sync_folder);
             }
         }
     }
     // 2. Delete from memory store
     if let Ok(store) = MemoryStore::open_app() {
-        store.delete_store_conversation(&agent, &id)
+        store
+            .delete_store_conversation(&agent, &id)
             .map_err(|e| format!("Failed to delete from memory store: {e}"))?;
     }
     Ok(())
@@ -2102,18 +2174,39 @@ async fn list_trashed_conversations() -> Result<Vec<TrashConversationResponse>, 
 }
 
 #[command]
-async fn empty_trash() -> Result<EmptyTrashResponse, String> {
+async fn empty_trash(
+    delete_sync_backup: Option<bool>,
+    sync_folder: Option<String>,
+) -> Result<EmptyTrashResponse, String> {
     let mut removed_trash_ids = Vec::new();
+    let should_delete_sync = delete_sync_backup.unwrap_or(false);
+    let sync_folder = sync_folder
+        .or_else(|| {
+            read_app_settings_from_disk()
+                .ok()
+                .flatten()
+                .map(|settings| settings.sync.sync_folder)
+        })
+        .filter(|folder| !folder.trim().is_empty());
 
     for path in list_trash_record_paths()? {
-        let trash_id = read_trash_record(&path)
-            .map(|record| record.trash_id)
-            .unwrap_or_else(|_| {
+        let record = read_trash_record(&path).ok();
+        let trash_id = record
+            .as_ref()
+            .map(|record| record.trash_id.clone())
+            .unwrap_or_else(|| {
                 path.file_stem()
                     .and_then(|stem| stem.to_str())
                     .unwrap_or("unknown-trash-record")
                     .to_string()
             });
+
+        if should_delete_sync {
+            if let (Some(record), Some(folder)) = (record.as_ref(), sync_folder.as_deref()) {
+                delete_sync_backup_file(&record.source_agent, &record.original_id, folder)?;
+            }
+        }
+
         fs::remove_file(&path)
             .map_err(|error| format!("Cannot remove Trash record {}: {error}", path.display()))?;
         removed_trash_ids.push(trash_id);
@@ -2470,8 +2563,7 @@ fn sync_local_now(folder_path: String) -> Result<local_sync::SyncResult, String>
         for summary in conversations {
             match adapter.read_conversation(&summary.id) {
                 Ok(conversation) => {
-                    let body = serde_json::to_vec(&conversation)
-                        .map_err(|e| e.to_string())?;
+                    let body = serde_json::to_vec(&conversation).map_err(|e| e.to_string())?;
                     items.push(local_sync::SyncItem {
                         agent: agent_key.to_string(),
                         id: summary.id.clone(),
@@ -2492,7 +2584,8 @@ fn sync_local_now(folder_path: String) -> Result<local_sync::SyncResult, String>
     if result.downloaded > 0 {
         if let Ok(store) = open_memory_store() {
             let remote = local_sync::read_remote_conversations(&path);
-            let mut local_ids: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+            let mut local_ids: std::collections::HashSet<(String, String)> =
+                std::collections::HashSet::new();
             for item in &items {
                 local_ids.insert((item.agent.clone(), item.id.clone()));
             }
@@ -2503,9 +2596,7 @@ fn sync_local_now(folder_path: String) -> Result<local_sync::SyncResult, String>
                 }
                 match serde_json::from_slice::<Conversation>(body) {
                     Ok(conversation) => {
-                        if let Err(e) = sync_conversation_into_store(
-                            &store, agent, &conversation,
-                        ) {
+                        if let Err(e) = sync_conversation_into_store(&store, agent, &conversation) {
                             eprintln!("Warning: failed to import synced {agent}/{id}: {e}");
                         }
                     }
@@ -2529,6 +2620,43 @@ fn run_mcp_stdio() -> anyhow::Result<()> {
         server.waiting().await?;
         anyhow::Ok(())
     })
+}
+
+fn build_app_menu() -> Menu {
+    let app_menu = Menu::new()
+        .add_native_item(MenuItem::About(
+            "ChatMem".to_string(),
+            AboutMetadata::default(),
+        ))
+        .add_native_item(MenuItem::Separator)
+        .add_item(CustomMenuItem::new(MENU_OPEN_SETTINGS.to_string(), "设置...").accelerator("CmdOrCtrl+,"))
+        .add_native_item(MenuItem::Separator)
+        .add_native_item(MenuItem::Services)
+        .add_native_item(MenuItem::Separator)
+        .add_native_item(MenuItem::Hide)
+        .add_native_item(MenuItem::HideOthers)
+        .add_native_item(MenuItem::ShowAll)
+        .add_native_item(MenuItem::Separator)
+        .add_native_item(MenuItem::Quit);
+
+    let file_menu = Menu::new().add_native_item(MenuItem::CloseWindow);
+
+    let edit_menu = Menu::new()
+        .add_native_item(MenuItem::Undo)
+        .add_native_item(MenuItem::Redo)
+        .add_native_item(MenuItem::Separator)
+        .add_native_item(MenuItem::Cut)
+        .add_native_item(MenuItem::Copy)
+        .add_native_item(MenuItem::Paste)
+        .add_native_item(MenuItem::SelectAll);
+
+    let view_menu = Menu::new().add_native_item(MenuItem::EnterFullScreen);
+
+    Menu::new()
+        .add_submenu(Submenu::new("ChatMem", app_menu))
+        .add_submenu(Submenu::new("File", file_menu))
+        .add_submenu(Submenu::new("Edit", edit_menu))
+        .add_submenu(Submenu::new("View", view_menu))
 }
 
 #[cfg(target_os = "macos")]
@@ -2577,7 +2705,8 @@ fn setup_macos_dock_handler(handle: tauri::AppHandle) {
 }
 
 fn main() {
-    if std::env::args().any(|arg| arg == "--mcp") {
+    let args = std::env::args().collect::<Vec<_>>();
+    if args.iter().any(|arg| arg == "--mcp") {
         if let Err(error) = run_mcp_stdio() {
             eprintln!("ChatMem MCP failed: {error}");
             std::process::exit(1);
@@ -2587,7 +2716,10 @@ fn main() {
 
     // Build system tray menu
     let tray_menu = tauri::SystemTrayMenu::new()
-        .add_item(tauri::CustomMenuItem::new("open".to_string(), "打开主界面").accelerator("Ctrl+Shift+M"))
+        .add_item(
+            tauri::CustomMenuItem::new("open".to_string(), "打开主界面")
+                .accelerator("Ctrl+Shift+M"),
+        )
         .add_native_item(tauri::SystemTrayMenuItem::Separator)
         .add_item(tauri::CustomMenuItem::new("sync".to_string(), "同步"))
         .add_native_item(tauri::SystemTrayMenuItem::Separator)
@@ -2597,39 +2729,45 @@ fn main() {
 
     let app = tauri::Builder::default()
         .system_tray(system_tray)
-        .on_system_tray_event(|app, event| {
-            match event {
-                tauri::SystemTrayEvent::MenuItemClick { id, .. } => {
-                    match id.as_str() {
-                        "open" => {
-                            if let Some(window) = app.get_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                let _ = window.unminimize();
-                            }
-                        }
-                        "sync" => {
-                            if let Some(window) = app.get_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                let _ = window.emit("tray-sync", ());
-                            }
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
-                    }
-                }
-                tauri::SystemTrayEvent::LeftClick { .. } => {
+        .menu(build_app_menu())
+        .on_menu_event(|event| {
+            if event.menu_item_id() == MENU_OPEN_SETTINGS {
+                let window = event.window();
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+                let _ = window.emit("open-settings", ());
+            }
+        })
+        .on_system_tray_event(|app, event| match event {
+            tauri::SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
+                "open" => {
                     if let Some(window) = app.get_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
                         let _ = window.unminimize();
                     }
                 }
+                "sync" => {
+                    if let Some(window) = app.get_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        let _ = window.emit("tray-sync", ());
+                    }
+                }
+                "quit" => {
+                    app.exit(0);
+                }
                 _ => {}
+            },
+            tauri::SystemTrayEvent::LeftClick { .. } => {
+                if let Some(window) = app.get_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    let _ = window.unminimize();
+                }
             }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             agent_integration::detect_agent_integrations,
