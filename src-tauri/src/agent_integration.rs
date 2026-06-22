@@ -58,7 +58,14 @@ pub struct AgentIntegrationOperationResult {
 
 impl IntegrationAgent {
     fn all() -> [Self; 6] {
-        [Self::Claude, Self::Codex, Self::Gemini, Self::OpenCode, Self::Hermes, Self::ZCode]
+        [
+            Self::Claude,
+            Self::Codex,
+            Self::Gemini,
+            Self::OpenCode,
+            Self::Hermes,
+            Self::ZCode,
+        ]
     }
 
     fn from_key(key: &str) -> Option<Self> {
@@ -143,8 +150,17 @@ impl IntegrationAgent {
                 .join("SKILL.md"),
             Self::Hermes => {
                 let base = dirs::data_local_dir().unwrap_or_else(|| paths.home_dir.clone());
-                let appdata = base.join("hermes").join("skills").join("chatmem").join("SKILL.md");
-                let home = paths.home_dir.join(".hermes").join("skills").join("chatmem").join("SKILL.md");
+                let appdata = base
+                    .join("hermes")
+                    .join("skills")
+                    .join("chatmem")
+                    .join("SKILL.md");
+                let home = paths
+                    .home_dir
+                    .join(".hermes")
+                    .join("skills")
+                    .join("chatmem")
+                    .join("SKILL.md");
                 if appdata.exists() || !home.exists() {
                     appdata
                 } else {
@@ -497,10 +513,7 @@ fn hermes_config_has_chatmem(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn install_hermes_config(
-    path: &Path,
-    paths: &IntegrationPaths,
-) -> Result<Option<PathBuf>, String> {
+fn install_hermes_config(path: &Path, paths: &IntegrationPaths) -> Result<Option<PathBuf>, String> {
     if !path.exists() {
         return Err(format!(
             "Hermes config not found at {}. Please install Hermes Agent first.",
@@ -517,7 +530,12 @@ fn install_hermes_config(
 
     let chatmem_block = chatmem_hermes_yaml(paths);
     let updated = if let Some(pos) = existing.find("plugins:") {
-        format!("{}{}{}\n", &existing[..pos], chatmem_block, &existing[pos..])
+        format!(
+            "{}{}{}\n",
+            &existing[..pos],
+            chatmem_block,
+            &existing[pos..]
+        )
     } else {
         format!("{}{}", existing, chatmem_block)
     };
@@ -533,7 +551,7 @@ fn uninstall_hermes_config(path: &Path) -> Result<Option<PathBuf>, String> {
     let existing = fs::read_to_string(path)
         .map_err(|error| format!("Cannot read {}: {error}", path.display()))?;
 
-    let mut lines: Vec<&str> = existing.lines().collect();
+    let lines: Vec<&str> = existing.lines().collect();
     let mut result = Vec::new();
     let mut skip = false;
 
@@ -812,12 +830,8 @@ fn instructions_installed(agent: IntegrationAgent, paths: &IntegrationPaths) -> 
                     .map(|content| content.contains(MANAGED_BLOCK_START))
                     .unwrap_or(false)
         }
-        IntegrationAgent::Hermes => {
-            path.exists()
-        }
-        IntegrationAgent::ZCode => {
-            path.exists()
-        }
+        IntegrationAgent::Hermes => path.exists(),
+        IntegrationAgent::ZCode => path.exists(),
     }
 }
 
@@ -970,12 +984,8 @@ fn install_one(
             backups.extend(install_managed_instructions(&opencode_rules_path(paths))?);
             backups
         }
-        IntegrationAgent::Hermes => {
-            install_skill_tree(agent, paths)?
-        }
-        IntegrationAgent::ZCode => {
-            install_skill_tree(agent, paths)?
-        }
+        IntegrationAgent::Hermes => install_skill_tree(agent, paths)?,
+        IntegrationAgent::ZCode => install_skill_tree(agent, paths)?,
     };
     backups.extend(instruction_backups);
 
@@ -1038,12 +1048,8 @@ fn uninstall_one(
             }
             removed
         }
-        IntegrationAgent::Hermes => {
-            uninstall_skill_tree(agent, paths)?
-        }
-        IntegrationAgent::ZCode => {
-            uninstall_skill_tree(agent, paths)?
-        }
+        IntegrationAgent::Hermes => uninstall_skill_tree(agent, paths)?,
+        IntegrationAgent::ZCode => uninstall_skill_tree(agent, paths)?,
     };
 
     let status = status_for_agent(agent, paths);

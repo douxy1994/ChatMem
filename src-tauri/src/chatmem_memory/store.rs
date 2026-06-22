@@ -1042,7 +1042,15 @@ impl MemoryStore {
         &self,
         source_agent: &str,
         source_conversation_id: &str,
-    ) -> Result<Option<(String, Option<String>, String, String, Vec<(String, String, String)>)>> {
+    ) -> Result<
+        Option<(
+            String,
+            Option<String>,
+            String,
+            String,
+            Vec<(String, String, String)>,
+        )>,
+    > {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT r.repo_root, c.summary, c.started_at, c.updated_at, c.conversation_id
@@ -1059,11 +1067,10 @@ impl MemoryStore {
                 row.get::<_, String>(4)?,
             ))
         })?;
-        let (repo_root, summary, started_at, updated_at, conversation_id) =
-            match rows.next() {
-                Some(row) => row?,
-                None => return Ok(None),
-            };
+        let (repo_root, summary, started_at, updated_at, conversation_id) = match rows.next() {
+            Some(row) => row?,
+            None => return Ok(None),
+        };
         // Read messages
         let mut msg_stmt = conn.prepare(
             "SELECT role, content, timestamp FROM messages WHERE conversation_id = ?1 ORDER BY timestamp",
@@ -1106,9 +1113,15 @@ impl MemoryStore {
             [&conv_id],
         )?;
         // Delete messages
-        conn.execute("DELETE FROM messages WHERE conversation_id = ?1", [&conv_id])?;
+        conn.execute(
+            "DELETE FROM messages WHERE conversation_id = ?1",
+            [&conv_id],
+        )?;
         // Delete conversation
-        conn.execute("DELETE FROM conversations WHERE conversation_id = ?1", [&conv_id])?;
+        conn.execute(
+            "DELETE FROM conversations WHERE conversation_id = ?1",
+            [&conv_id],
+        )?;
         Ok(true)
     }
 

@@ -363,4 +363,52 @@ describe("Sync settings", () => {
       expect(screen.getByText("Ready")).toBeTruthy();
     });
   });
+
+  it("shows installed agent integrations before undeployed ones", async () => {
+    mockInvoke.mockImplementation((command: string) => {
+      if (command === "detect_agent_integrations") {
+        return Promise.resolve([
+          {
+            agent: "codex",
+            label: "Codex",
+            configPath: "C:/Users/demo/.codex/config.toml",
+            instructionsPath: "C:/Users/demo/.codex/skills/chatmem/SKILL.md",
+            mcpInstalled: false,
+            instructionsInstalled: false,
+            configExists: true,
+            status: "not_installed",
+            statusLabel: "Not installed",
+            commandPreview: '"C:/Program Files/ChatMem/ChatMem.exe" --mcp',
+            details: [],
+          },
+          {
+            agent: "claude",
+            label: "Claude",
+            configPath: "C:/Users/demo/.claude.json",
+            instructionsPath: "C:/Users/demo/.claude/CLAUDE.md",
+            mcpInstalled: true,
+            instructionsInstalled: true,
+            configExists: true,
+            status: "ready",
+            statusLabel: "Ready",
+            commandPreview: '"C:/Program Files/ChatMem/ChatMem.exe" --mcp',
+            details: [],
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    renderApp();
+
+    await openSettingsFromMenu();
+    const cards = await screen.findAllByRole("article");
+    const integrationCards = cards.filter((card) =>
+      card.classList.contains("agent-integration-card"),
+    );
+
+    expect(integrationCards).toHaveLength(2);
+    expect(integrationCards[0].textContent).toContain("Claude");
+    expect(integrationCards[1].textContent).toContain("Codex");
+  });
 });

@@ -287,6 +287,26 @@ describe("App", () => {
         return [];
       }
 
+      if (command === "check_github_release_update") {
+        return {
+          shouldUpdate: false,
+          version: "1.3.0",
+          notes: null,
+          publishedAt: "2026-06-22T00:32:03Z",
+          assetName: null,
+        };
+      }
+
+      if (command === "install_github_release_update") {
+        return {
+          shouldUpdate: true,
+          version: "1.3.1",
+          notes: null,
+          publishedAt: "2026-06-22T12:00:00Z",
+          assetName: "ChatMem_1.3.1_x64-setup.exe",
+        };
+      }
+
       return [];
     });
 
@@ -508,7 +528,7 @@ describe("App", () => {
       id: "conv-001",
       sourceAgent: "claude",
       projectDir: "D:/VSP/demo",
-      summary: "Debug session",
+      title: "Debug session",
       note: "",
       tags: [],
       pinned: false,
@@ -2471,7 +2491,7 @@ describe("App", () => {
     );
   });
 
-  it("runs a manual update check from settings", async () => {
+  it("reports the current version is latest from the manual update button", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -2483,23 +2503,32 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Check for updates" }));
 
     await waitFor(() => {
-      expect(mockCheckUpdate).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("You're already on the latest version")).toBeTruthy();
     });
+    expect(mockInvoke).toHaveBeenCalledWith("check_github_release_update");
+    expect(mockCheckUpdate).not.toHaveBeenCalled();
+    expect(mockInstallUpdate).not.toHaveBeenCalled();
+    expect(mockRelaunch).not.toHaveBeenCalled();
   });
 
-  it("auto-checks for updates on launch when enabled", async () => {
+  it("auto-installs GitHub updates on launch when enabled", async () => {
     vi.useFakeTimers();
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: true, autoCaptureMemory: false }),
     );
-    mockCheckUpdate.mockResolvedValue({
-      shouldUpdate: true,
-      manifest: {
-        version: "1.0.0",
-        date: "2026-04-08T12:00:00Z",
-        body: "Bug fixes",
-      },
+    const baseImplementation = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "check_github_release_update") {
+        return {
+          shouldUpdate: true,
+          version: "1.3.1",
+          notes: "Bug fixes",
+          publishedAt: "2026-06-22T12:00:00Z",
+          assetName: "ChatMem_1.3.1_x64-setup.exe",
+        };
+      }
+      return baseImplementation?.(command, payload) ?? [];
     });
 
     renderApp();
@@ -2508,7 +2537,10 @@ describe("App", () => {
       await vi.advanceTimersByTimeAsync(3600);
     });
 
-    expect(mockCheckUpdate).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByText(/1\.0\.0/).length).toBeGreaterThan(0);
+    expect(mockInvoke).toHaveBeenCalledWith("check_github_release_update");
+    expect(mockInvoke).toHaveBeenCalledWith("install_github_release_update");
+    expect(mockCheckUpdate).not.toHaveBeenCalled();
+    expect(mockInstallUpdate).not.toHaveBeenCalled();
+    expect(mockRelaunch).not.toHaveBeenCalled();
   });
 });

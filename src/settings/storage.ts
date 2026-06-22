@@ -6,6 +6,18 @@ export type WebDavScheme = "https" | "http";
 export type DownloadMode = "on-sync" | "as-needed";
 export type AppFontFamily = "system" | "source-sans" | "source-serif" | "wenkai";
 
+export type FavoriteConversationSnapshot = {
+  id: string;
+  sourceAgent: string;
+  projectDir: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  note: string;
+  tags: string[];
+  pinned: boolean;
+};
+
 export const APP_FONT_OPTIONS: Array<{
   id: AppFontFamily;
   label: Record<Locale, string>;
@@ -59,18 +71,6 @@ export type SyncSettings = {
   syncFolder: string;
 };
 
-export type FavoriteConversationSnapshot = {
-  id: string;
-  sourceAgent: string;
-  projectDir: string;
-  createdAt: string;
-  updatedAt: string;
-  summary: string | null;
-  note?: string;
-  tags?: string[];
-  pinned?: boolean;
-};
-
 export type AppSettings = {
   locale: Locale;
   fontFamily: AppFontFamily;
@@ -80,6 +80,7 @@ export type AppSettings = {
   sync: SyncSettings;
   autoBackupEnabled: boolean;
   autoBackupIntervalMinutes: number;
+  favorites: FavoriteConversationSnapshot[];
   machineGroupNames: Record<string, string>;
   machineGroupOverrides: Record<string, string>;
   favoriteConversations: Record<string, FavoriteConversationSnapshot>;
@@ -107,6 +108,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sync: DEFAULT_SYNC_SETTINGS,
   autoBackupEnabled: false,
   autoBackupIntervalMinutes: 30,
+  favorites: [],
   machineGroupNames: {},
   machineGroupOverrides: {},
   favoriteConversations: {},
@@ -145,6 +147,98 @@ export function normalizeSyncSettings(value: unknown): SyncSettings {
   };
 }
 
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function normalizeFavoriteSnapshot(value: unknown): FavoriteConversationSnapshot | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const raw = value as Partial<FavoriteConversationSnapshot> & {
+    summary?: unknown;
+    source_agent?: unknown;
+    project_dir?: unknown;
+    created_at?: unknown;
+    updated_at?: unknown;
+  };
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  const sourceAgent =
+    typeof raw.sourceAgent === "string"
+      ? raw.sourceAgent.trim()
+      : typeof raw.source_agent === "string"
+        ? raw.source_agent.trim()
+        : "";
+
+  if (!id || !sourceAgent) {
+    return null;
+  }
+
+  return {
+    id,
+    sourceAgent,
+    projectDir:
+      typeof raw.projectDir === "string"
+        ? raw.projectDir
+        : typeof raw.project_dir === "string"
+          ? raw.project_dir
+          : "",
+    title:
+      typeof raw.title === "string" && raw.title.trim()
+        ? raw.title.trim()
+        : typeof raw.summary === "string" && raw.summary.trim()
+          ? raw.summary.trim()
+          : id,
+    createdAt:
+      typeof raw.createdAt === "string"
+        ? raw.createdAt
+        : typeof raw.created_at === "string"
+          ? raw.created_at
+          : "",
+    updatedAt:
+      typeof raw.updatedAt === "string"
+        ? raw.updatedAt
+        : typeof raw.updated_at === "string"
+          ? raw.updated_at
+          : "",
+    note: typeof raw.note === "string" ? raw.note : "",
+    tags: normalizeStringArray(raw.tags),
+    pinned: raw.pinned === true,
+  };
+}
+
+function normalizeFavorites(value: unknown): FavoriteConversationSnapshot[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const favorites: FavoriteConversationSnapshot[] = [];
+
+  value.forEach((item) => {
+    const favorite = normalizeFavoriteSnapshot(item);
+    if (!favorite) {
+      return;
+    }
+    const key = `${favorite.sourceAgent}:${favorite.id}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    favorites.push(favorite);
+  });
+
+  return favorites;
+}
+
 function splitWebDavUrl(value: unknown): Pick<SyncSettings, "webdavScheme" | "webdavHost" | "webdavPath"> {
   if (typeof value !== "string" || !value.trim()) {
     return {
@@ -181,7 +275,9 @@ function normalizeFavoriteConversations(value: unknown): Record<string, Favorite
         return [];
       }
 
-      const snapshot = rawSnapshot as Partial<FavoriteConversationSnapshot>;
+      const snapshot = rawSnapshot as Partial<FavoriteConversationSnapshot> & {
+        summary?: unknown;
+      };
       if (
         typeof key !== "string" ||
         typeof snapshot.id !== "string" ||
@@ -199,7 +295,12 @@ function normalizeFavoriteConversations(value: unknown): Record<string, Favorite
             projectDir: typeof snapshot.projectDir === "string" ? snapshot.projectDir : "",
             createdAt: typeof snapshot.createdAt === "string" ? snapshot.createdAt : "",
             updatedAt: typeof snapshot.updatedAt === "string" ? snapshot.updatedAt : "",
-            summary: typeof snapshot.summary === "string" ? snapshot.summary : null,
+            title:
+              typeof snapshot.title === "string" && snapshot.title.trim()
+                ? snapshot.title.trim()
+                : typeof snapshot.summary === "string" && snapshot.summary.trim()
+                  ? snapshot.summary.trim()
+                  : snapshot.id,
             note: typeof snapshot.note === "string" ? snapshot.note : "",
             tags: Array.isArray(snapshot.tags)
               ? snapshot.tags.filter((tag): tag is string => typeof tag === "string")
@@ -238,6 +339,7 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       typeof parsed.autoBackupIntervalMinutes === "number" && parsed.autoBackupIntervalMinutes >= 5
         ? parsed.autoBackupIntervalMinutes
         : 30,
+    favorites: normalizeFavorites(parsed.favorites),
     machineGroupNames: isRecord(parsed.machineGroupNames)
       ? Object.fromEntries(
           Object.entries(parsed.machineGroupNames).filter(

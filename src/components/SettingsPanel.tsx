@@ -191,6 +191,32 @@ function splitServerPath(value: string) {
   };
 }
 
+function agentIntegrationSortRank(integration: AgentIntegrationStatus) {
+  if (integration.status === "ready") {
+    return 0;
+  }
+  if (
+    integration.status === "partial" ||
+    integration.mcpInstalled ||
+    integration.instructionsInstalled
+  ) {
+    return 1;
+  }
+  return 2;
+}
+
+function sortAgentIntegrations(integrations: AgentIntegrationStatus[]) {
+  return integrations
+    .map((integration, index) => ({ integration, index }))
+    .sort((left, right) => {
+      const rankDelta =
+        agentIntegrationSortRank(left.integration) -
+        agentIntegrationSortRank(right.integration);
+      return rankDelta || left.index - right.index;
+    })
+    .map(({ integration }) => integration);
+}
+
 export default function SettingsPanel({
   open,
   title,
@@ -641,7 +667,7 @@ export default function SettingsPanel({
 
           {agentIntegrations.length > 0 ? (
             <div className="agent-integration-grid">
-              {agentIntegrations.map((integration) => {
+              {sortAgentIntegrations(agentIntegrations).map((integration) => {
                 const isWorking =
                   integrationState.kind === "working" &&
                   (integrationState.agent === "all" || integrationState.agent === integration.agent);

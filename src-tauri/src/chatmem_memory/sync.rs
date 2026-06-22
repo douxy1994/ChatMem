@@ -763,6 +763,7 @@ mod tests {
                 AgentKind::Codex => "Codex",
                 AgentKind::Gemini => "Gemini",
                 AgentKind::OpenCode => "OpenCode",
+                AgentKind::Hermes => "Hermes",
                 AgentKind::ZCode => "ZCode",
                 AgentKind::ZCodeClaude => "ZCode Claude",
                 AgentKind::ZCodeCodex => "ZCode Codex",

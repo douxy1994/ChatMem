@@ -1,5 +1,12 @@
 # ChatMem
 
+## v1.3.0 Release Status
+
+- The `v1.3.0` GitHub Release includes the macOS Apple Silicon DMG and the Windows x64 NSIS installer.
+- Recommended Windows download: `ChatMem_1.3.0_x64-setup.exe`.
+- In-app update checks read the latest GitHub Release tag directly. If a newer release includes a Windows installer, ChatMem downloads and launches it. If the installed version already matches the latest release, ChatMem reports that it is up to date.
+- Full release notes: [`docs/releases/v1.3.0.md`](./docs/releases/v1.3.0.md).
+
 ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、Codex、Gemini、OpenCode、ZCode 等本地对话历史整理成可搜索、可恢复、可迁移、可继续使用的项目上下文。
 
 它不是另一个聊天客户端。ChatMem 解决的是 AI 编程里最容易断线的部分：换 agent、换窗口、换机器、隔几天回来，模型不知道之前发生过什么。ChatMem 会把本地对话作为证据层索引，再把稳定知识沉淀为启动规则、Wiki、checkpoint 和 handoff，并通过桌面端与 MCP 把这些上下文带回新的 agent 会话。
@@ -288,11 +295,13 @@ npm run tauri build
 - macOS Apple Silicon / Intel dmg
 - macOS app updater 包
 
-应用内更新依赖 Tauri updater，更新源指向：
+应用内“检查更新”优先调用 GitHub Release API：
 
 ```text
-https://github.com/douxy1994/ChatMem/releases/latest/download/latest.json
+https://api.github.com/repos/douxy1994/ChatMem/releases/latest
 ```
+
+Windows 端会比较最新 Release tag 与当前版本；如果发现更高版本并且 Release 内包含 Windows `.exe` 安装器，会下载并运行安装器。如果版本一致，会提示当前为最新版本。
 
 发布前需要在 GitHub 仓库里配置：
 

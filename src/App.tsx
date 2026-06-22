@@ -547,9 +547,9 @@ function conversationToFavoriteSnapshot(
     id: conversation.id,
     sourceAgent: conversation.source_agent,
     projectDir: getConversationProjectDir(conversation),
+    title: normalizeConversationTitle(conversation.summary) || conversation.id,
     createdAt: conversation.created_at,
     updatedAt: conversation.updated_at,
-    summary: conversation.summary ?? null,
     note: "",
     tags: [],
     pinned: false,
@@ -565,7 +565,7 @@ function favoriteSnapshotToConversationSummary(
     project_dir: snapshot.projectDir,
     created_at: snapshot.createdAt,
     updated_at: snapshot.updatedAt,
-    summary: snapshot.summary,
+    summary: snapshot.title,
     message_count: 0,
     file_count: 0,
   };
@@ -1901,7 +1901,9 @@ function App() {
       try {
         const nextState = await runUpdateCheck();
         if (nextState.kind === "available") {
-          setUpdateState(nextState);
+          setUpdateState({ kind: "installing", version: nextState.version });
+          const installedState = await installAvailableUpdate(nextState.version);
+          setUpdateState(installedState);
         }
       } catch {
         // Keep launch-time update checks silent on failure.
@@ -6281,6 +6283,12 @@ function App() {
         setUpdateState({ kind: "checking" });
         try {
           const nextState = await runUpdateCheck();
+          if (nextState.kind === "available") {
+            setUpdateState({ kind: "installing", version: nextState.version });
+            const installedState = await installAvailableUpdate(nextState.version);
+            setUpdateState(installedState);
+            return;
+          }
           setUpdateState(nextState);
         } catch {
           setUpdateState({ kind: "error", message: t("settings.updateError") });

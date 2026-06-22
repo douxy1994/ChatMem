@@ -4,6 +4,7 @@
 )]
 
 mod agent_integration;
+mod github_update;
 mod local_sync;
 
 use std::{
@@ -2773,6 +2774,8 @@ fn main() {
             agent_integration::detect_agent_integrations,
             agent_integration::install_agent_integration,
             agent_integration::uninstall_agent_integration,
+            github_update::check_github_release_update,
+            github_update::install_github_release_update,
             list_conversations,
             search_conversations,
             read_conversation,
