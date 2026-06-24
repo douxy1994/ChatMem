@@ -382,6 +382,90 @@ describe("App", () => {
     expect(await screen.findByText("Sync complete: ↑2 ↓1.")).toBeTruthy();
   });
 
+  it("reuses a WebDAV password saved in Settings for Workbench quick sync", async () => {
+    localStorage.setItem(
+      "chatmem.settings",
+      JSON.stringify({
+        locale: "en",
+        autoCheckUpdates: false,
+        autoCaptureMemory: false,
+        sync: {
+          provider: "webdav",
+          webdavScheme: "https",
+          webdavHost: "dav.example.com",
+          webdavPath: "dav",
+          username: "liang@example.com",
+          remotePath: "chatmem",
+          downloadMode: "on-sync",
+          syncFolder: "",
+        },
+      }),
+    );
+    const baseImplementation = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "load_webdav_password") {
+        return null;
+      }
+
+      if (command === "verify_webdav_server") {
+        expect(payload).toMatchObject({
+          username: "liang@example.com",
+          password: "session-secret",
+        });
+        return undefined;
+      }
+
+      if (command === "save_webdav_password") {
+        expect(payload).toEqual({
+          username: "liang@example.com",
+          password: "session-secret",
+        });
+        return undefined;
+      }
+
+      if (command === "sync_webdav_now") {
+        expect(payload).toEqual({
+          webdavScheme: "https",
+          webdavHost: "dav.example.com",
+          webdavPath: "dav",
+          remotePath: "chatmem",
+          username: "liang@example.com",
+          password: "session-secret",
+        });
+        return {
+          uploadedCount: 3,
+          remoteUrl: "https://dav.example.com/dav/chatmem/",
+        };
+      }
+
+      return baseImplementation?.(command, payload) ?? [];
+    });
+
+    renderApp();
+
+    await openSettingsFromMenu();
+    fireEvent.change(await screen.findByLabelText("Password"), {
+      target: { value: "session-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verify server" }));
+    expect(await screen.findByText("Verification successful")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sync now" }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("sync_webdav_now", {
+        webdavScheme: "https",
+        webdavHost: "dav.example.com",
+        webdavPath: "dav",
+        remotePath: "chatmem",
+        username: "liang@example.com",
+        password: "session-secret",
+      });
+    });
+    expect(await screen.findByText("Synced 3 files to WebDAV.")).toBeTruthy();
+  });
+
   it("silently auto-captures the selected conversation when memory capture is enabled", async () => {
     localStorage.setItem(
       "chatmem.settings",
@@ -454,7 +538,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Control Center" })).toBeTruthy();
   });
 
-  it("renders the 1.3.0 version without an About utility entry", async () => {
+  it("renders the 1.3.1 version without an About utility entry", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -462,7 +546,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect((await screen.findAllByText("v1.3.0")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("v1.3.1")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "About us" })).toBeNull();
   });
 

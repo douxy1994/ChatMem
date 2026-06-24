@@ -1348,6 +1348,14 @@ async fn put_webdav_json(
     }
 }
 
+fn is_stale_local_conversation_error(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    error.contains("Rollout file not found")
+        || error.contains("Conversation file not found")
+        || normalized.contains("no such file or directory")
+        || normalized.contains("os error 2")
+}
+
 fn collect_webdav_conversation_uploads() -> Result<Vec<WebDavConversationUpload>, String> {
     let mut uploads = Vec::new();
 
@@ -1361,9 +1369,20 @@ fn collect_webdav_conversation_uploads() -> Result<Vec<WebDavConversationUpload>
             .list_conversations()
             .map_err(|error| error.to_string())?;
         for summary in summaries {
-            let mut conversation = adapter
-                .read_conversation(&summary.id)
-                .map_err(|error| error.to_string())?;
+            let mut conversation = match adapter.read_conversation(&summary.id) {
+                Ok(conversation) => conversation,
+                Err(error) => {
+                    let error_message = error.to_string();
+                    if is_stale_local_conversation_error(&error_message) {
+                        eprintln!(
+                            "[ChatMem] Skipping stale {agent} conversation {} during WebDAV sync: {error_message}",
+                            summary.id
+                        );
+                        continue;
+                    }
+                    return Err(error_message);
+                }
+            };
             conversation.project_dir = normalize_project_dir(&conversation.project_dir);
             let id = conversation.id.clone();
             let project_dir = conversation.project_dir.clone();
@@ -2846,8 +2865,8 @@ fn main() {
 mod tests {
     use super::{
         build_migration_verification, build_resume_command, build_webdav_probe_url,
-        build_webdav_remote_collection_url, conversation_matches_query, normalize_project_dir,
-        AgentKind, Conversation,
+        build_webdav_remote_collection_url, conversation_matches_query,
+        is_stale_local_conversation_error, normalize_project_dir, AgentKind, Conversation,
     };
     use agentswap_core::types::{ChangeType, FileChange, Message, Role, ToolCall, ToolStatus};
     use chrono::Utc;
@@ -3016,7 +3035,13 @@ mod tests {
                     username: "liang@example.com".to_string(),
                     remote_path: "chatmem".to_string(),
                     download_mode: "as-needed".to_string(),
+                    sync_folder: String::new(),
                 },
+                auto_backup_enabled: false,
+                auto_backup_interval_minutes: super::default_auto_backup_interval(),
+                machine_group_names: HashMap::new(),
+                machine_group_overrides: HashMap::new(),
+                favorite_conversations: HashMap::new(),
             }),
             super::CredentialCheck::Missing,
             Ok(()),
@@ -3051,6 +3076,21 @@ mod tests {
     #[test]
     fn normalizes_windows_extended_project_paths() {
         assert_eq!(normalize_project_dir(r"\\?\D:\VSP"), "D:/VSP".to_string());
+    }
+
+    #[test]
+    fn treats_missing_rollout_files_as_stale_webdav_upload_items() {
+        let error =
+            "Rollout file not found: /Users/alvis/.zcode/v2/acp-config/codex/example.jsonl (thread: abc)";
+
+        assert!(is_stale_local_conversation_error(error));
+    }
+
+    #[test]
+    fn does_not_treat_parse_errors_as_stale_webdav_upload_items() {
+        let error = "Cannot parse conversation transcript: expected value at line 1 column 1";
+
+        assert!(!is_stale_local_conversation_error(error));
     }
 
     #[test]

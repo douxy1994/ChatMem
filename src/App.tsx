@@ -1590,6 +1590,7 @@ function App() {
   const [copyState, setCopyState] = useState<CopyState>({ target: null, status: "idle" });
   const [appSettings, setAppSettings] = useState<AppSettings>(() => loadSettings());
   const [workbenchSyncState, setWorkbenchSyncState] = useState<WorkbenchSyncState>("idle");
+  const [webDavSessionPasswords, setWebDavSessionPasswords] = useState<Record<string, string>>({});
   const [updateState, setUpdateState] = useState<UpdateState>({ kind: "idle" });
   const [, setActivePage] = useState<TopPage>("continue");
   const [historyView, setHistoryView] = useState<HistoryView>("conversations");
@@ -2551,6 +2552,43 @@ function App() {
     return invoke<LocalSyncResult>("sync_local_now", { folderPath: folder });
   };
 
+  const loadWebDavPasswordForApp = useCallback(
+    async (username: string): Promise<string | null> => {
+      const trimmedUsername = username.trim();
+      if (!trimmedUsername) return null;
+
+      const savedPassword = await loadWebDavPassword(trimmedUsername);
+      if (savedPassword) {
+        setWebDavSessionPasswords((current) =>
+          current[trimmedUsername] === savedPassword
+            ? current
+            : { ...current, [trimmedUsername]: savedPassword },
+        );
+        return savedPassword;
+      }
+
+      return webDavSessionPasswords[trimmedUsername] ?? null;
+    },
+    [webDavSessionPasswords],
+  );
+
+  const saveWebDavPasswordForApp = useCallback(
+    async ({ username, password }: { username: string; password: string }): Promise<void> => {
+      const trimmedUsername = username.trim();
+      if (!trimmedUsername || !password) return;
+
+      try {
+        await saveWebDavPassword(trimmedUsername, password);
+      } finally {
+        setWebDavSessionPasswords((current) => ({
+          ...current,
+          [trimmedUsername]: password,
+        }));
+      }
+    },
+    [],
+  );
+
   const handleWorkbenchSyncNow = async () => {
     if (workbenchSyncState === "syncing") return;
 
@@ -2572,7 +2610,7 @@ function App() {
           );
         }
 
-        const password = await loadWebDavPassword(syncSettings.username);
+        const password = await loadWebDavPasswordForApp(syncSettings.username);
         if (!password) {
           throw new Error(
             locale === "en"
@@ -6263,8 +6301,8 @@ function App() {
       onDetectAgentIntegrations={handleDetectAgentIntegrations}
       onInstallAgentIntegration={handleInstallAgentIntegration}
       onUninstallAgentIntegration={handleUninstallAgentIntegration}
-      onLoadWebDavPassword={loadWebDavPassword}
-      onSaveWebDavPassword={({ username, password }) => saveWebDavPassword(username, password)}
+      onLoadWebDavPassword={loadWebDavPasswordForApp}
+      onSaveWebDavPassword={saveWebDavPasswordForApp}
       onLocalSyncStatus={handleLocalSyncStatus}
       onSyncLocalNow={handleSyncLocalNow}
       autoBackupEnabled={appSettings.autoBackupEnabled}
