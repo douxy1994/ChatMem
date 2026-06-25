@@ -175,7 +175,6 @@ interface FileChange {
 type AgentType =
   | "claude"
   | "codex"
-  | "gemini"
   | "antigravity"
   | "opencode"
   | "zcode"
@@ -400,7 +399,6 @@ const COPY_RESET_DELAY_MS = 1800;
 const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
   { value: "claude", label: "Claude" },
   { value: "codex", label: "Codex" },
-  { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
   { value: "zcode", label: "ZCode" },
   { value: "hermes", label: "Hermes" },
@@ -413,7 +411,7 @@ const ZCODE_CLI_LABELS: Record<string, string> = {
   opencode: "OpenCode",
   glm: "GLM",
 };
-const ZCODE_CLI_ORDER = ["claude", "codex", "gemini", "antigravity", "opencode", "glm", "unknown"];
+const ZCODE_CLI_ORDER = ["claude", "codex", "antigravity", "opencode", "glm", "unknown"];
 const TARGET_PROFILE_OPTIONS: Record<string, HandoffTargetProfileOption[]> = {
   claude: [
     {
@@ -475,8 +473,6 @@ function getAgentHeading(agent: AgentType, locale: Locale) {
       return "CLAUDE 对话";
     case "codex":
       return "CODEX 对话";
-    case "gemini":
-      return "GEMINI 对话";
     case "opencode":
       return "OPENCODE \u5bf9\u8bdd";
     case "zcode":
@@ -525,8 +521,6 @@ function getAgentConfigLocation(agent: AgentType) {
       return "~/.claude";
     case "codex":
       return "~/.codex/config.toml";
-    case "gemini":
-      return "~/.gemini";
     case "opencode":
       return "$XDG_DATA_HOME/opencode or ~/.local/share/opencode";
     case "zcode":
@@ -749,7 +743,6 @@ function getTopLevelAgent(sourceAgent: string): AgentType {
   if (
     normalizedAgent === "claude" ||
     normalizedAgent === "codex" ||
-    normalizedAgent === "gemini" ||
     normalizedAgent === "opencode" ||
     normalizedAgent === "hermes"
   ) {

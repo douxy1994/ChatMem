@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 type AgentType =
   | "claude"
   | "codex"
-  | "gemini"
   | "antigravity"
   | "opencode"
   | "zcode"
@@ -22,7 +21,7 @@ interface MigrateModalProps {
 const agents: { value: AgentType; label: string }[] = [
   { value: "claude", label: "Claude Code" },
   { value: "codex", label: "Codex" },
-  { value: "gemini", label: "Gemini" },
+  { value: "antigravity", label: "Antigravity" },
   { value: "opencode", label: "OpenCode" },
   { value: "zcode", label: "ZCode" },
 ];

@@ -721,7 +721,7 @@ impl AgentAdapter for GeminiAdapter {
 }
 
 pub struct AntigravityAdapter {
-    inner: GeminiAdapter,
+    brain_dir: PathBuf,
 }
 
 impl Default for AntigravityAdapter {
@@ -734,28 +734,156 @@ impl AntigravityAdapter {
     pub fn new() -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
         Self {
-            inner: GeminiAdapter::with_tmp_dir(home.join(".gemini").join("antigravity-cli").join("tmp")),
+            brain_dir: home.join(".gemini").join("antigravity").join("brain"),
         }
     }
 }
 
 impl AgentAdapter for AntigravityAdapter {
     fn is_available(&self) -> bool {
-        self.inner.is_available()
+        self.brain_dir.exists()
     }
 
     fn list_conversations(&self) -> Result<Vec<ConversationSummary>> {
-        let mut summaries = self.inner.list_conversations()?;
-        for summary in &mut summaries {
-            summary.source_agent = AgentKind::Antigravity;
+        let mut summaries = Vec::new();
+        if !self.brain_dir.exists() {
+            return Ok(summaries);
         }
+
+        for entry in std::fs::read_dir(&self.brain_dir)? {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            
+            let id = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let transcript_path = path.join(".system_generated").join("logs").join("transcript.jsonl");
+            
+            if !transcript_path.exists() {
+                continue;
+            }
+
+            if let Ok(conv) = self.read_conversation(&id) {
+                let summary = ConversationSummary {
+                    id: conv.id,
+                    source_agent: conv.source_agent,
+                    project_dir: conv.project_dir,
+                    created_at: conv.created_at,
+                    updated_at: conv.updated_at,
+                    summary: conv.summary,
+                    message_count: conv.messages.len(),
+                    file_count: conv.file_changes.len(),
+                };
+                summaries.push(summary);
+            }
+        }
+        summaries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         Ok(summaries)
     }
 
     fn read_conversation(&self, id: &str) -> Result<Conversation> {
-        let mut conv = self.inner.read_conversation(id)?;
-        conv.source_agent = AgentKind::Antigravity;
-        Ok(conv)
+        let transcript_path = self
+            .brain_dir
+            .join(id)
+            .join(".system_generated")
+            .join("logs")
+            .join("transcript.jsonl");
+
+        if !transcript_path.exists() {
+            anyhow::bail!("Antigravity transcript not found for id: {}", id);
+        }
+
+        let file = std::fs::File::open(&transcript_path)?;
+        let reader = std::io::BufReader::new(file);
+        use std::io::BufRead;
+
+        let mut messages = Vec::new();
+        let mut created_at = Utc::now();
+        let mut updated_at = Utc::now();
+        let mut first_user_msg: Option<String> = None;
+
+
+        for line in reader.lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            
+            let v: Value = serde_json::from_str(&line).unwrap_or(json!({}));
+            let source = v.get("source").and_then(|s| s.as_str()).unwrap_or("");
+            let content = v.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+            let ts_str = v.get("created_at").and_then(|c| c.as_str()).unwrap_or("");
+            let ts = ts_str.parse::<DateTime<Utc>>().unwrap_or_else(|_| Utc::now());
+
+            if messages.is_empty() {
+                created_at = ts;
+            }
+            updated_at = ts;
+
+            let role = match source {
+                "USER_EXPLICIT" | "USER" => Role::User,
+                "MODEL" => Role::Assistant,
+                "SYSTEM" => Role::System,
+                _ => Role::System,
+            };
+
+            if role == Role::User && first_user_msg.is_none() && !content.is_empty() {
+                let parsed_content = if content.contains("<USER_REQUEST>") {
+                    content
+                        .split("<USER_REQUEST>")
+                        .nth(1)
+                        .unwrap_or(&content)
+                        .split("</USER_REQUEST>")
+                        .next()
+                        .unwrap_or(&content)
+                        .trim()
+                        .to_string()
+                } else {
+                    content.clone()
+                };
+                first_user_msg = title_candidate(&parsed_content, 100);
+            }
+
+            // check tool calls
+            let mut tool_calls = Vec::new();
+            if let Some(tcs) = v.get("tool_calls").and_then(|tc| tc.as_array()) {
+                for tc in tcs {
+                    let tc_name = tc.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                    let args = tc.get("args").cloned();
+                    
+                    tool_calls.push(ToolCall {
+                        name: tc_name,
+                        input: args.unwrap_or(json!({})),
+                        output: None, // JSONL output is in next step, skipping for now
+                        status: ToolStatus::Success,
+                    });
+                }
+            }
+
+            messages.push(Message {
+                id: Uuid::new_v4(),
+                timestamp: ts,
+                role,
+                content,
+                tool_calls,
+                metadata: HashMap::new(),
+            });
+        }
+
+        Ok(Conversation {
+            id: id.to_string(),
+            source_agent: AgentKind::Antigravity,
+            project_dir: self.brain_dir.join(id).display().to_string(),
+            created_at,
+            updated_at,
+            summary: choose_title(None, first_user_msg.as_deref(), 100),
+            messages,
+            file_changes: Vec::new(),
+        })
     }
 
     fn render_prompt(&self, conversation: &Conversation) -> Result<String> {
@@ -795,15 +923,19 @@ impl AgentAdapter for AntigravityAdapter {
     }
 
     fn data_dir(&self) -> PathBuf {
-        self.inner.data_dir()
+        self.brain_dir.clone()
     }
 
     fn delete_conversation(&self, id: &str) -> Result<()> {
-        self.inner.delete_conversation(id)
+        let brain_dir = self.brain_dir.join(id);
+        if brain_dir.exists() {
+            move_path_to_trash(&brain_dir)?;
+        }
+        Ok(())
     }
 
-    fn write_conversation(&self, conversation: &Conversation) -> Result<String> {
-        self.inner.write_conversation(conversation)
+    fn write_conversation(&self, _conversation: &Conversation) -> Result<String> {
+        anyhow::bail!("Antigravity write is not implemented")
     }
 }
 
