@@ -1371,11 +1371,11 @@ function WindowButtonIcon({
   if (type === "sync") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M12.5 5.7A4.9 4.9 0 0 0 4 3.7L2.6 5.1" />
-        <path d="M2.6 2.3v2.8h2.8" />
-        <path d="M3.5 10.3A4.9 4.9 0 0 0 12 12.3l1.4-1.4" />
-        <path d="M13.4 13.7v-2.8h-2.8" />
-        <path d="M6.2 8h3.6" />
+        <path d="M5.2 11.6H4a2.6 2.6 0 0 1-.4-5.2 4.3 4.3 0 0 1 8.1-1.3A3.1 3.1 0 0 1 11.4 11.6h-.6" />
+        <path d="M10.1 7.5a2.5 2.5 0 0 0-4.2-1.1L5.1 7.2" />
+        <path d="M5.1 5.6v1.6h1.6" />
+        <path d="M5.9 9.2a2.5 2.5 0 0 0 4.2 1.1l.8-.8" />
+        <path d="M10.9 11.1V9.5H9.3" />
       </svg>
     );
   }
@@ -5574,11 +5574,17 @@ function App() {
         <div className="workbench-header-actions">
           <button
             type="button"
-            className="workbench-sync-button"
+            className={`workbench-sync-button ${
+              workbenchSyncState === "syncing" ? "is-syncing" : ""
+            }`}
             onClick={() => void handleWorkbenchSyncNow()}
             disabled={workbenchSyncState === "syncing"}
-            aria-label={syncCopy.syncNowLabel}
-            title={syncCopy.syncNowLabel}
+            aria-label={
+              workbenchSyncState === "syncing" ? syncCopy.syncingNowLabel : syncCopy.syncNowLabel
+            }
+            title={
+              workbenchSyncState === "syncing" ? syncCopy.syncingNowLabel : syncCopy.syncNowLabel
+            }
           >
             <span className="workbench-sync-icon" aria-hidden="true">
               <WindowButtonIcon type="sync" />

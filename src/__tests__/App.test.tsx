@@ -382,6 +382,64 @@ describe("App", () => {
     expect(await screen.findByText("Sync complete: ↑2 ↓1.")).toBeTruthy();
   });
 
+  it("shows an animated syncing state on the Workbench sync button", async () => {
+    localStorage.setItem(
+      "chatmem.settings",
+      JSON.stringify({
+        locale: "en",
+        autoCheckUpdates: false,
+        autoCaptureMemory: false,
+        sync: {
+          provider: "onedrive",
+          webdavScheme: "https",
+          webdavHost: "",
+          webdavPath: "",
+          username: "",
+          remotePath: "chatmem",
+          downloadMode: "on-sync",
+          syncFolder: "D:/OneDrive/chatmem",
+        },
+      }),
+    );
+    const syncDeferred = createDeferred<{
+      uploaded: number;
+      downloaded: number;
+      skipped: number;
+      conflicts_resolved: number;
+      folder_path: string;
+    }>();
+    const baseImplementation = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "sync_local_now") {
+        expect(payload).toEqual({ folderPath: "D:/OneDrive/chatmem" });
+        return syncDeferred.promise;
+      }
+
+      return baseImplementation?.(command, payload) ?? [];
+    });
+
+    renderApp();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sync now" }));
+    const syncingButton = await screen.findByRole("button", { name: "Syncing..." });
+    expect(syncingButton.classList.contains("is-syncing")).toBe(true);
+    expect(syncingButton.querySelector(".workbench-sync-icon svg")).toBeTruthy();
+
+    syncDeferred.resolve({
+      uploaded: 1,
+      downloaded: 0,
+      skipped: 0,
+      conflicts_resolved: 0,
+      folder_path: "D:/OneDrive/chatmem",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Sync now" }).classList.contains("is-syncing")).toBe(
+        false,
+      );
+    });
+  });
+
   it("reuses a WebDAV password saved in Settings for Workbench quick sync", async () => {
     localStorage.setItem(
       "chatmem.settings",

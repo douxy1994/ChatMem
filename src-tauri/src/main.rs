@@ -2670,13 +2670,10 @@ fn build_app_menu() -> Menu {
         .add_native_item(MenuItem::Paste)
         .add_native_item(MenuItem::SelectAll);
 
-    let view_menu = Menu::new().add_native_item(MenuItem::EnterFullScreen);
-
     Menu::new()
         .add_submenu(Submenu::new("ChatMem", app_menu))
         .add_submenu(Submenu::new("File", file_menu))
         .add_submenu(Submenu::new("Edit", edit_menu))
-        .add_submenu(Submenu::new("View", view_menu))
 }
 
 #[cfg(target_os = "macos")]

@@ -1,11 +1,11 @@
 # ChatMem
 
-## v1.3.0 Release Status
+## v1.3.1 Release Status
 
-- The `v1.3.0` GitHub Release includes the macOS Apple Silicon DMG and the Windows x64 NSIS installer.
-- Recommended Windows download: `ChatMem_1.3.0_x64-setup.exe`.
+- The `v1.3.1` GitHub Release includes the macOS Apple Silicon DMG, the Windows x64 NSIS installer, and the Windows x64 MSI installer.
+- Recommended Windows download: `ChatMem_1.3.1_x64-setup.exe`.
 - In-app update checks read the latest GitHub Release tag directly. If a newer release includes a Windows installer, ChatMem downloads and launches it. If the installed version already matches the latest release, ChatMem reports that it is up to date.
-- Full release notes: [`docs/releases/v1.3.0.md`](./docs/releases/v1.3.0.md).
+- Full release notes: [`docs/releases/v1.3.1.md`](./docs/releases/v1.3.1.md).
 
 ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、Codex、Gemini、OpenCode、ZCode 等本地对话历史整理成可搜索、可恢复、可迁移、可继续使用的项目上下文。
 
@@ -22,7 +22,12 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 - 修复工作台“立即同步”无法复用刚在设置页保存过的 WebDAV 密码的问题：设置页验证或同步后，当前应用会话会缓存该密码，工作台快捷同步可直接继续使用。
 - 解析错误、损坏数据等非“文件缺失”问题仍会失败并提示，不会被静默吞掉。
 
+**Windows 工作台体验**
+- 工作台右上角同步按钮改为云同步图标，同步中会显示旋转和流动高光状态。
+- Windows 顶部菜单栏移除 `View` 菜单，保留更精简的 ChatMem / File / Edit 菜单结构。
+
 **发布**
+- Windows x64 安装包已合并到 `v1.3.1` GitHub Release：推荐下载 `ChatMem_1.3.1_x64-setup.exe`，批量部署可使用 `ChatMem_1.3.1_x64_en-US.msi`。
 - Release 说明见 `docs/releases/v1.3.1.md`。
 
 ### v1.3.0 重点更新
