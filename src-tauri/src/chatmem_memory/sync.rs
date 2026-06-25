@@ -1,9 +1,8 @@
 use agentswap_claude::ClaudeAdapter;
 use agentswap_codex::CodexAdapter;
 use agentswap_core::{adapter::AgentAdapter, types::Conversation};
-use agentswap_gemini::GeminiAdapter;
+use agentswap_gemini::{AntigravityAdapter, GeminiAdapter};
 use agentswap_opencode::OpenCodeAdapter;
-use agentswap_gemini::AntigravityAdapter;
 use agentswap_zcode::{
     ZCodeAdapter, ZCodeClaudeAdapter, ZCodeCodexAdapter, ZCodeGeminiAdapter, ZCodeOpenCodeAdapter,
 };
@@ -21,7 +20,14 @@ use super::{
     store::MemoryStore,
 };
 
-const LOCAL_HISTORY_AGENTS: &[&str] = &["claude", "codex", "opencode", "zcode", "antigravity"];
+const LOCAL_HISTORY_AGENTS: &[&str] = &[
+    "claude",
+    "codex",
+    "gemini",
+    "antigravity",
+    "opencode",
+    "zcode",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,7 +46,7 @@ pub fn build_resume_command(agent: &str, id: &str) -> Option<String> {
     match agent {
         "claude" => Some(format!("claude --resume {}", id)),
         "codex" => Some(format!("codex resume {}", id)),
-
+        "gemini" => Some(format!("gemini --resume {}", id)),
         "antigravity" => Some(format!("antigravity --resume {}", id)),
         "opencode" => Some(format!("opencode --session {}", id)),
         "zcode" | "zcode-claude" | "zcode-codex" | "zcode-gemini" | "zcode-opencode" => None,
@@ -128,7 +134,7 @@ fn get_adapter(agent: &str) -> Option<Box<dyn AgentAdapter>> {
     match agent {
         "claude" => Some(Box::new(ClaudeAdapter::new())),
         "codex" => Some(Box::new(CodexAdapter::new())),
-
+        "gemini" => Some(Box::new(GeminiAdapter::new())),
         "antigravity" => Some(Box::new(AntigravityAdapter::new())),
         "opencode" => Some(Box::new(OpenCodeAdapter::new())),
         "zcode" => Some(Box::new(ZCodeAdapter::new())),
@@ -745,6 +751,7 @@ mod tests {
                 AgentKind::Claude => "Claude",
                 AgentKind::Codex => "Codex",
                 AgentKind::Gemini => "Gemini",
+                AgentKind::Antigravity => "Antigravity",
                 AgentKind::OpenCode => "OpenCode",
                 AgentKind::Hermes => "Hermes",
                 AgentKind::ZCode => "ZCode",

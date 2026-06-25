@@ -34,15 +34,15 @@ use chatmem::chatmem_memory::{
 };
 use rmcp::{transport::stdio, ServiceExt};
 use serde::{Deserialize, Serialize};
-use tauri::{command, AboutMetadata, CustomMenuItem, Menu, MenuItem, Submenu};
 use tauri::Manager;
+use tauri::{command, AboutMetadata, CustomMenuItem, Menu, MenuItem, Submenu};
 
 // Import AgentSwap adapters
 use agentswap_claude::ClaudeAdapter;
 use agentswap_codex::CodexAdapter;
 use agentswap_core::adapter::AgentAdapter;
 use agentswap_core::types::{AgentKind, Conversation, ConversationSummary, Message};
-use agentswap_gemini::GeminiAdapter;
+use agentswap_gemini::{AntigravityAdapter, GeminiAdapter};
 use agentswap_hermes::adapter::HermesAdapter;
 use agentswap_opencode::OpenCodeAdapter;
 use agentswap_zcode::{
@@ -50,8 +50,24 @@ use agentswap_zcode::{
 };
 
 const DEFAULT_TRASH_RETENTION_DAYS: i64 = 14;
-const AGENT_KEYS: &[&str] = &["claude", "codex", "zcode", "hermes"];
+const AGENT_KEYS: &[&str] = &[
+    "claude",
+    "codex",
+    "gemini",
+    "antigravity",
+    "opencode",
+    "zcode",
+    "hermes",
+];
 const MENU_OPEN_SETTINGS: &str = "open_settings";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConversationSourceStatus {
+    agent: String,
+    label: String,
+    available: bool,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ConversationSummaryResponse {
@@ -333,6 +349,7 @@ fn get_adapter(agent: &str) -> Result<Box<dyn AgentAdapter>, String> {
         "claude" => Ok(Box::new(ClaudeAdapter::new())),
         "codex" => Ok(Box::new(CodexAdapter::new())),
         "gemini" => Ok(Box::new(GeminiAdapter::new())),
+        "antigravity" => Ok(Box::new(AntigravityAdapter::new())),
         "opencode" => Ok(Box::new(OpenCodeAdapter::new())),
         "zcode" => Ok(Box::new(ZCodeAdapter::new())),
         "zcode-claude" => Ok(Box::new(ZCodeClaudeAdapter::new())),
@@ -357,6 +374,19 @@ fn agent_key(agent: &AgentKind) -> &'static str {
         AgentKind::ZCodeOpenCode => "zcode-opencode",
         AgentKind::Antigravity => "antigravity",
         AgentKind::Hermes => "hermes",
+    }
+}
+
+fn agent_display_label(agent: &str) -> &'static str {
+    match agent {
+        "claude" => "Claude",
+        "codex" => "Codex",
+        "gemini" => "Gemini",
+        "antigravity" => "Antigravity",
+        "opencode" => "OpenCode",
+        "zcode" => "ZCode",
+        "hermes" => "Hermes",
+        _ => "Unknown",
     }
 }
 
@@ -1603,7 +1633,7 @@ async fn save_webdav_password(username: String, password: String) -> Result<(), 
     let entry = webdav_credential_entry(username)?;
     let _ = entry.set_password(&password);
 
-    // Always save to settings.json as a fallback, because ad-hoc signed apps 
+    // Always save to settings.json as a fallback, because ad-hoc signed apps
     // lose macOS Keychain access across updates/reinstalls.
     if let Ok(Some(mut settings)) = read_app_settings_from_disk() {
         if settings.sync.username.trim() == username {
@@ -1714,6 +1744,24 @@ async fn sync_webdav_now(
         uploaded_count,
         remote_url: remote_url.to_string(),
     })
+}
+
+#[command]
+async fn detect_conversation_sources() -> Result<Vec<ConversationSourceStatus>, String> {
+    let mut sources = Vec::new();
+
+    for agent in AGENT_KEYS {
+        let available = get_adapter(agent)
+            .map(|adapter| adapter.is_available())
+            .unwrap_or(false);
+        sources.push(ConversationSourceStatus {
+            agent: (*agent).to_string(),
+            label: agent_display_label(agent).to_string(),
+            available,
+        });
+    }
+
+    Ok(sources)
 }
 
 #[command]
@@ -2665,7 +2713,10 @@ fn build_app_menu() -> Menu {
             AboutMetadata::default(),
         ))
         .add_native_item(MenuItem::Separator)
-        .add_item(CustomMenuItem::new(MENU_OPEN_SETTINGS.to_string(), "设置...").accelerator("CmdOrCtrl+,"))
+        .add_item(
+            CustomMenuItem::new(MENU_OPEN_SETTINGS.to_string(), "设置...")
+                .accelerator("CmdOrCtrl+,"),
+        )
         .add_native_item(MenuItem::Separator)
         .add_native_item(MenuItem::Services)
         .add_native_item(MenuItem::Separator)
@@ -2808,6 +2859,7 @@ fn main() {
             agent_integration::uninstall_agent_integration,
             github_update::check_github_release_update,
             github_update::install_github_release_update,
+            detect_conversation_sources,
             list_conversations,
             search_conversations,
             read_conversation,
@@ -3046,6 +3098,7 @@ mod tests {
                     webdav_host: "dav.example.com".to_string(),
                     webdav_path: "remote.php/dav/files/liang".to_string(),
                     username: "liang@example.com".to_string(),
+                    password: None,
                     remote_path: "chatmem".to_string(),
                     download_mode: "as-needed".to_string(),
                     sync_folder: String::new(),

@@ -175,6 +175,7 @@ interface FileChange {
 type AgentType =
   | "claude"
   | "codex"
+  | "gemini"
   | "antigravity"
   | "opencode"
   | "zcode"
@@ -219,6 +220,12 @@ type HandoffComposerState = {
     summary: string;
   };
 } | null;
+
+interface ConversationSourceStatus {
+  agent: string;
+  label: string;
+  available: boolean;
+}
 
 type HelpCard = {
   id: string;
@@ -399,7 +406,9 @@ const COPY_RESET_DELAY_MS = 1800;
 const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
   { value: "claude", label: "Claude" },
   { value: "codex", label: "Codex" },
+  { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
+  { value: "opencode", label: "OpenCode" },
   { value: "zcode", label: "ZCode" },
   { value: "hermes", label: "Hermes" },
 ];
@@ -411,7 +420,7 @@ const ZCODE_CLI_LABELS: Record<string, string> = {
   opencode: "OpenCode",
   glm: "GLM",
 };
-const ZCODE_CLI_ORDER = ["claude", "codex", "antigravity", "opencode", "glm", "unknown"];
+const ZCODE_CLI_ORDER = ["claude", "codex", "gemini", "antigravity", "opencode", "glm", "unknown"];
 const TARGET_PROFILE_OPTIONS: Record<string, HandoffTargetProfileOption[]> = {
   claude: [
     {
@@ -449,6 +458,18 @@ const TARGET_PROFILE_OPTIONS: Record<string, HandoffTargetProfileOption[]> = {
       description: "Focus on history, related context, and cross-cutting background information.",
     },
   ],
+  antigravity: [
+    {
+      value: "antigravity_execution",
+      label: "Antigravity Execution",
+      description: "Emphasize project context, local artifacts, and workspace-aware next steps.",
+    },
+    {
+      value: "antigravity_review",
+      label: "Antigravity Review",
+      description: "Highlight changed files, evidence, and follow-up checks for Antigravity.",
+    },
+  ],
   opencode: [
     {
       value: "opencode_execution",
@@ -473,6 +494,10 @@ function getAgentHeading(agent: AgentType, locale: Locale) {
       return "CLAUDE 对话";
     case "codex":
       return "CODEX 对话";
+    case "gemini":
+      return "GEMINI 对话";
+    case "antigravity":
+      return "ANTIGRAVITY 对话";
     case "opencode":
       return "OPENCODE \u5bf9\u8bdd";
     case "zcode":
@@ -488,6 +513,7 @@ const AGENT_LABELS: Record<string, string> = {
   claude: "Claude",
   codex: "Codex",
   gemini: "Gemini",
+  antigravity: "Antigravity",
   opencode: "OpenCode",
   zcode: "ZCode",
   hermes: "Hermes",
@@ -521,6 +547,10 @@ function getAgentConfigLocation(agent: AgentType) {
       return "~/.claude";
     case "codex":
       return "~/.codex/config.toml";
+    case "gemini":
+      return "~/.gemini/tmp";
+    case "antigravity":
+      return "~/.gemini/antigravity/brain";
     case "opencode":
       return "$XDG_DATA_HOME/opencode or ~/.local/share/opencode";
     case "zcode":
@@ -743,12 +773,18 @@ function getTopLevelAgent(sourceAgent: string): AgentType {
   if (
     normalizedAgent === "claude" ||
     normalizedAgent === "codex" ||
+    normalizedAgent === "gemini" ||
+    normalizedAgent === "antigravity" ||
     normalizedAgent === "opencode" ||
     normalizedAgent === "hermes"
   ) {
     return normalizedAgent;
   }
   return "claude";
+}
+
+function isAgentType(value: string): value is AgentType {
+  return AGENT_OPTIONS.some((agent) => agent.value === value);
 }
 
 function isRootProjectPlaceholder(projectDir: string) {
@@ -1368,11 +1404,11 @@ function WindowButtonIcon({
   if (type === "sync") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M5.2 11.6H4a2.6 2.6 0 0 1-.4-5.2 4.3 4.3 0 0 1 8.1-1.3A3.1 3.1 0 0 1 11.4 11.6h-.6" />
-        <path d="M10.1 7.5a2.5 2.5 0 0 0-4.2-1.1L5.1 7.2" />
-        <path d="M5.1 5.6v1.6h1.6" />
-        <path d="M5.9 9.2a2.5 2.5 0 0 0 4.2 1.1l.8-.8" />
-        <path d="M10.9 11.1V9.5H9.3" />
+        <path d="M12.5 5.7A4.9 4.9 0 0 0 3.8 4" />
+        <path d="M2.6 2.3v2.8h2.8" />
+        <path d="M3.5 10.3A4.9 4.9 0 0 0 12.2 12" />
+        <path d="M13.4 13.7v-2.8h-2.8" />
+        <path d="M6.2 8h3.6" />
       </svg>
     );
   }
@@ -1548,6 +1584,7 @@ function App() {
   const shell = useMemo(() => getShellCopy(locale), [locale]);
   const syncCopy = useMemo(() => getSyncCopy(locale), [locale]);
   const [selectedAgent, setSelectedAgent] = useState<AgentType>("claude");
+  const [availableSourceAgents, setAvailableSourceAgents] = useState<AgentType[]>(["claude"]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [showMigrateModal, setShowMigrateModal] = useState(false);
@@ -1632,6 +1669,10 @@ function App() {
     "--font-sans": selectedFontOption.cssFamily,
     fontFamily: selectedFontOption.cssFamily,
   } as CSSProperties & Record<"--font-sans", string>;
+  const visibleAgentOptions = useMemo(
+    () => AGENT_OPTIONS.filter((agent) => availableSourceAgents.includes(agent.value)),
+    [availableSourceAgents],
+  );
   const availableHandoffTargets = AGENT_OPTIONS.map((agent) => agent.value).filter(
     (agent) => agent !== selectedAgent,
   );
@@ -1737,6 +1778,39 @@ function App() {
     return () => {
       isDisposed = true;
       unlistenOpenSettings?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let isDisposed = false;
+
+    const detectSources = async () => {
+      try {
+        const statuses = await invoke<ConversationSourceStatus[]>("detect_conversation_sources");
+        if (isDisposed) {
+          return;
+        }
+        const availableAgents = statuses
+          .filter((status) => status.available && isAgentType(status.agent))
+          .map((status) => status.agent as AgentType);
+
+        if (availableAgents.length === 0) {
+          return;
+        }
+
+        setAvailableSourceAgents(availableAgents);
+        setSelectedAgent((current) =>
+          availableAgents.includes(current) ? current : availableAgents[0],
+        );
+      } catch {
+        // Keep the conservative default when native detection is unavailable in tests or previews.
+      }
+    };
+
+    void detectSources();
+
+    return () => {
+      isDisposed = true;
     };
   }, []);
 
@@ -5571,17 +5645,11 @@ function App() {
         <div className="workbench-header-actions">
           <button
             type="button"
-            className={`workbench-sync-button ${
-              workbenchSyncState === "syncing" ? "is-syncing" : ""
-            }`}
+            className="workbench-sync-button"
             onClick={() => void handleWorkbenchSyncNow()}
             disabled={workbenchSyncState === "syncing"}
-            aria-label={
-              workbenchSyncState === "syncing" ? syncCopy.syncingNowLabel : syncCopy.syncNowLabel
-            }
-            title={
-              workbenchSyncState === "syncing" ? syncCopy.syncingNowLabel : syncCopy.syncNowLabel
-            }
+            aria-label={syncCopy.syncNowLabel}
+            title={syncCopy.syncNowLabel}
           >
             <span className="workbench-sync-icon" aria-hidden="true">
               <WindowButtonIcon type="sync" />
@@ -6384,7 +6452,7 @@ function App() {
                       setSelectedAgent(event.target.value as AgentType);
                     }}
                   >
-                    {AGENT_OPTIONS.map((agent) => (
+                    {visibleAgentOptions.map((agent) => (
                       <option key={agent.value} value={agent.value}>
                         {agent.label}
                       </option>

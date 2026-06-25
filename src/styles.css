@@ -1911,7 +1911,6 @@ button {
 }
 
 .workbench-sync-button {
-  position: relative;
   min-height: 42px;
   display: inline-flex;
   align-items: center;
@@ -1926,7 +1925,6 @@ button {
   white-space: nowrap;
   cursor: pointer;
   box-shadow: 0 8px 20px rgba(47, 116, 79, 0.08);
-  overflow: hidden;
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
@@ -1947,28 +1945,6 @@ button {
   opacity: 0.72;
 }
 
-.workbench-sync-button.is-syncing {
-  border-color: rgba(47, 116, 79, 0.26);
-  background: linear-gradient(135deg, rgba(226, 244, 233, 0.98), rgba(255, 255, 255, 0.9));
-}
-
-.workbench-sync-button.is-syncing::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    100deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.16) 35%,
-    rgba(255, 255, 255, 0.48) 48%,
-    rgba(255, 255, 255, 0.16) 61%,
-    transparent 100%
-  );
-  transform: translateX(-110%);
-  animation: workbench-sync-sheen 1400ms ease-in-out infinite;
-  pointer-events: none;
-}
-
 .workbench-sync-icon {
   width: 28px;
   height: 28px;
@@ -1982,17 +1958,17 @@ button {
 }
 
 .workbench-sync-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.55;
+  stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
   transform-origin: center;
 }
 
-.workbench-sync-button.is-syncing .workbench-sync-icon svg {
+.workbench-sync-button:disabled .workbench-sync-icon svg {
   animation: workbench-sync-spin 950ms linear infinite;
 }
 
@@ -2002,15 +1978,8 @@ button {
   }
 }
 
-@keyframes workbench-sync-sheen {
-  to {
-    transform: translateX(110%);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .workbench-sync-button.is-syncing::after,
-  .workbench-sync-button.is-syncing .workbench-sync-icon svg {
+  .workbench-sync-button:disabled .workbench-sync-icon svg {
     animation: none;
   }
 }

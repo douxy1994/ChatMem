@@ -24,6 +24,14 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 - 全局引导规则写入：`~/.gemini/antigravity-cli/AGENTS.md`。
 - 原 Gemini CLI 配置仍保留在 `~/.gemini/settings.json` 和 `~/.gemini/GEMINI.md`，用于企业授权或 API Key 仍需 Gemini CLI 的场景。
 
+**Antigravity 本地历史读取**
+- 新增 Antigravity 本地历史 adapter，读取真实 transcript：`~/.gemini/antigravity/brain/<session>/.system_generated/logs/transcript.jsonl`。
+- 解析 `USER_REQUEST`、`Cwd`、`AbsolutePath`、tool calls、thinking metadata 和文件变化，项目根目录不再误显示为 Antigravity brain 目录。
+- 主界面“来源”下拉改为运行时检测，只显示本机已安装且有可读数据目录的 agent。Gemini 和 Antigravity 可以并存；如果本机未安装 Gemini CLI，Gemini 不会出现在首页来源中。
+
+**工作台同步入口**
+- 工作台右上角“立即同步”按钮恢复 v1.3.0/v1.3.1 早期的循环箭头 icon 和禁用态旋转动画，不再使用云朵流光样式。
+
 **开发文档**
 - Release 说明见 `docs/releases/v1.3.2.md`。
 - Windows 端同功能实现指南见 `docs/windows-v1.3.2-antigravity-implementation.md`。
@@ -211,8 +219,13 @@ macOS 推荐下载：
 | --- | --- | --- |
 | Claude | 来源 -> 项目 -> 对话 | 解析本机 Claude Code 项目对话和子代理任务。 |
 | Codex | 来源 -> 项目/本地历史 -> 对话 | 解析 Codex CLI / Codex 桌面端 rollout 与会话历史。 |
+| Gemini | 来源 -> 项目 -> 对话 | 解析 Gemini CLI 历史；仅在本机存在可读 Gemini 数据目录时显示。 |
+| Google Antigravity | 来源 -> 项目 -> 对话 | 解析 `~/.gemini/antigravity/brain` 下的 Antigravity transcript；与 Gemini 并存。 |
+| OpenCode | 来源 -> 项目 -> 对话 | 解析 OpenCode 本地会话；仅在本机存在可读数据目录时显示。 |
 | Hermes | 来源 -> 项目 -> 对话 | 解析 Hermes Agent SQLite 数据库（`~/.hermes/state.db`）。 |
 | ZCode | 来源 -> CLI -> 项目 -> 对话 | 解析 `~/.zcode/v2/acp-config`，把 ZCode 作为顶层来源，再按内部 CLI 分组。 |
+
+主界面的来源下拉只展示当前电脑已安装且可读取的来源；设置页的 Agent 集成仍会展示可安装/可修复的目标。
 
 ZCode Windows 默认位置示例：
 

@@ -218,7 +218,15 @@ fn parse_timestamp(ts: &str) -> i64 {
     }
 }
 
-const AGENT_LIST: &[&str] = &["claude", "codex", "antigravity", "opencode", "zcode", "hermes"];
+const AGENT_LIST: &[&str] = &[
+    "claude",
+    "codex",
+    "gemini",
+    "antigravity",
+    "opencode",
+    "zcode",
+    "hermes",
+];
 
 /// Perform bidirectional sync between local agents and a sync folder.
 ///

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 type AgentType =
   | "claude"
   | "codex"
+  | "gemini"
   | "antigravity"
   | "opencode"
   | "zcode"
@@ -21,7 +22,8 @@ interface MigrateModalProps {
 const agents: { value: AgentType; label: string }[] = [
   { value: "claude", label: "Claude Code" },
   { value: "codex", label: "Codex" },
-  { value: "antigravity", label: "Antigravity" },
+  { value: "gemini", label: "Gemini" },
+  { value: "antigravity", label: "Google Antigravity" },
   { value: "opencode", label: "OpenCode" },
   { value: "zcode", label: "ZCode" },
 ];
@@ -57,7 +59,7 @@ function MigrateModal({
         <h3>迁移对话</h3>
         <div className="modal-content">
           <p className="modal-helper-text">
-            可在 Claude、Codex、Gemini 和 OpenCode 之间迁移。写入后会自动读回验证，验证失败时不会删除原对话。
+            可在 Claude、Codex、Gemini、Google Antigravity 和 OpenCode 之间迁移。写入后会自动读回验证，验证失败时不会删除原对话。
           </p>
 
           <div className="form-group">

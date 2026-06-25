@@ -737,6 +737,96 @@ impl AntigravityAdapter {
             brain_dir: home.join(".gemini").join("antigravity").join("brain"),
         }
     }
+
+    #[allow(dead_code)]
+    pub fn with_brain_dir(brain_dir: PathBuf) -> Self {
+        Self { brain_dir }
+    }
+
+    fn transcript_path(&self, id: &str) -> PathBuf {
+        self.brain_dir
+            .join(id)
+            .join(".system_generated")
+            .join("logs")
+            .join("transcript.jsonl")
+    }
+
+    fn clean_encoded_string(value: &str) -> String {
+        let mut current = value.trim().to_string();
+        for _ in 0..2 {
+            if current.len() >= 2 && current.starts_with('"') && current.ends_with('"') {
+                match serde_json::from_str::<String>(&current) {
+                    Ok(decoded) => current = decoded.trim().to_string(),
+                    Err(_) => break,
+                }
+            }
+        }
+        current
+    }
+
+    fn clean_user_content(content: &str) -> String {
+        if let Some((_, rest)) = content.split_once("<USER_REQUEST>") {
+            if let Some((request, _)) = rest.split_once("</USER_REQUEST>") {
+                return request.trim().to_string();
+            }
+        }
+        content.trim().to_string()
+    }
+
+    fn collect_named_strings(value: &Value, output: &mut Vec<(String, String)>) {
+        match value {
+            Value::Object(map) => {
+                for (key, nested) in map {
+                    if let Some(text) = nested.as_str() {
+                        output.push((key.clone(), Self::clean_encoded_string(text)));
+                    }
+                    Self::collect_named_strings(nested, output);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    Self::collect_named_strings(item, output);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn looks_like_absolute_path(value: &str) -> bool {
+        let value = value.strip_prefix("file://").unwrap_or(value);
+        value.starts_with('/')
+            || value.starts_with("~/")
+            || (value.len() > 2
+                && value.as_bytes()[1] == b':'
+                && value.as_bytes()[2] == b'\\')
+            || (value.len() > 2
+                && value.as_bytes()[1] == b':'
+                && value.as_bytes()[2] == b'/')
+    }
+
+    fn normalize_path_value(value: &str) -> String {
+        let cleaned = Self::clean_encoded_string(value);
+        cleaned.strip_prefix("file://").unwrap_or(&cleaned).to_string()
+    }
+
+    fn is_project_dir_key(key: &str) -> bool {
+        matches!(
+            key.to_ascii_lowercase().as_str(),
+            "cwd"
+                | "currentworkingdirectory"
+                | "workingdirectory"
+                | "workdir"
+                | "projectpath"
+                | "projectdir"
+        )
+    }
+
+    fn is_file_path_key(key: &str) -> bool {
+        matches!(
+            key.to_ascii_lowercase().as_str(),
+            "absolutepath" | "absolute_path" | "filepath" | "file_path" | "path"
+        )
+    }
 }
 
 impl AgentAdapter for AntigravityAdapter {
@@ -761,7 +851,7 @@ impl AgentAdapter for AntigravityAdapter {
             }
             
             let id = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-            let transcript_path = path.join(".system_generated").join("logs").join("transcript.jsonl");
+            let transcript_path = self.transcript_path(&id);
             
             if !transcript_path.exists() {
                 continue;
@@ -786,12 +876,7 @@ impl AgentAdapter for AntigravityAdapter {
     }
 
     fn read_conversation(&self, id: &str) -> Result<Conversation> {
-        let transcript_path = self
-            .brain_dir
-            .join(id)
-            .join(".system_generated")
-            .join("logs")
-            .join("transcript.jsonl");
+        let transcript_path = self.transcript_path(id);
 
         if !transcript_path.exists() {
             anyhow::bail!("Antigravity transcript not found for id: {}", id);
@@ -804,8 +889,10 @@ impl AgentAdapter for AntigravityAdapter {
         let mut messages = Vec::new();
         let mut created_at = Utc::now();
         let mut updated_at = Utc::now();
+        let mut saw_timestamp = false;
         let mut first_user_msg: Option<String> = None;
-
+        let mut project_dir: Option<String> = None;
+        let mut file_changes = Vec::new();
 
         for line in reader.lines() {
             let line = line?;
@@ -815,12 +902,15 @@ impl AgentAdapter for AntigravityAdapter {
             
             let v: Value = serde_json::from_str(&line).unwrap_or(json!({}));
             let source = v.get("source").and_then(|s| s.as_str()).unwrap_or("");
-            let content = v.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+            let event_type = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+            let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
+            let raw_content = v.get("content").and_then(|c| c.as_str()).unwrap_or("");
             let ts_str = v.get("created_at").and_then(|c| c.as_str()).unwrap_or("");
             let ts = ts_str.parse::<DateTime<Utc>>().unwrap_or_else(|_| Utc::now());
 
-            if messages.is_empty() {
+            if !saw_timestamp {
                 created_at = ts;
+                saw_timestamp = true;
             }
             updated_at = ts;
 
@@ -830,59 +920,97 @@ impl AgentAdapter for AntigravityAdapter {
                 "SYSTEM" => Role::System,
                 _ => Role::System,
             };
+            let content = if role == Role::User {
+                Self::clean_user_content(raw_content)
+            } else {
+                raw_content.trim().to_string()
+            };
 
             if role == Role::User && first_user_msg.is_none() && !content.is_empty() {
-                let parsed_content = if content.contains("<USER_REQUEST>") {
-                    content
-                        .split("<USER_REQUEST>")
-                        .nth(1)
-                        .unwrap_or(&content)
-                        .split("</USER_REQUEST>")
-                        .next()
-                        .unwrap_or(&content)
-                        .trim()
-                        .to_string()
-                } else {
-                    content.clone()
-                };
-                first_user_msg = title_candidate(&parsed_content, 100);
+                first_user_msg = title_candidate(&content, 100);
             }
 
-            // check tool calls
+            let message_id = Uuid::new_v4();
             let mut tool_calls = Vec::new();
             if let Some(tcs) = v.get("tool_calls").and_then(|tc| tc.as_array()) {
                 for tc in tcs {
                     let tc_name = tc.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
                     let args = tc.get("args").cloned();
-                    
+                    if let Some(args_value) = args.as_ref() {
+                        let mut named_strings = Vec::new();
+                        Self::collect_named_strings(args_value, &mut named_strings);
+                        for (key, value) in named_strings {
+                            let normalized_value = Self::normalize_path_value(&value);
+                            if project_dir.is_none()
+                                && Self::is_project_dir_key(&key)
+                                && Self::looks_like_absolute_path(&normalized_value)
+                            {
+                                project_dir = Some(normalized_value.clone());
+                            }
+                            if Self::is_file_path_key(&key)
+                                && Self::looks_like_absolute_path(&normalized_value)
+                            {
+                                file_changes.push(FileChange {
+                                    path: normalized_value,
+                                    change_type: ChangeType::Modified,
+                                    timestamp: ts,
+                                    message_id,
+                                });
+                            }
+                        }
+                    }
                     tool_calls.push(ToolCall {
                         name: tc_name,
                         input: args.unwrap_or(json!({})),
                         output: None, // JSONL output is in next step, skipping for now
-                        status: ToolStatus::Success,
+                        status: if event_type == "ERROR_MESSAGE" || status == "ERROR" {
+                            ToolStatus::Error
+                        } else {
+                            ToolStatus::Success
+                        },
                     });
                 }
             }
 
+            if content.is_empty() && tool_calls.is_empty() && v.get("thinking").is_none() {
+                continue;
+            }
+
+            let mut metadata = HashMap::new();
+            if !source.is_empty() {
+                metadata.insert("antigravity_source".to_string(), json!(source));
+            }
+            if !event_type.is_empty() {
+                metadata.insert("antigravity_type".to_string(), json!(event_type));
+            }
+            if !status.is_empty() {
+                metadata.insert("antigravity_status".to_string(), json!(status));
+            }
+            if let Some(thinking) = v.get("thinking").and_then(|item| item.as_str()) {
+                if !thinking.trim().is_empty() {
+                    metadata.insert("thinking".to_string(), json!(thinking.trim()));
+                }
+            }
+
             messages.push(Message {
-                id: Uuid::new_v4(),
+                id: message_id,
                 timestamp: ts,
                 role,
                 content,
                 tool_calls,
-                metadata: HashMap::new(),
+                metadata,
             });
         }
 
         Ok(Conversation {
             id: id.to_string(),
             source_agent: AgentKind::Antigravity,
-            project_dir: self.brain_dir.join(id).display().to_string(),
+            project_dir: project_dir.unwrap_or_else(|| self.brain_dir.join(id).display().to_string()),
             created_at,
             updated_at,
             summary: choose_title(None, first_user_msg.as_deref(), 100),
             messages,
-            file_changes: Vec::new(),
+            file_changes,
         })
     }
 
@@ -1910,6 +2038,82 @@ mod tests {
 
         assert_eq!(summary.project_dir, "D:/VSP/agentswap-gui");
         assert_eq!(conv.project_dir, "D:/VSP/agentswap-gui");
+    }
+
+    fn create_antigravity_transcript(brain_dir: &Path, id: &str, lines: &[Value]) {
+        let logs_dir = brain_dir
+            .join(id)
+            .join(".system_generated")
+            .join("logs");
+        fs::create_dir_all(&logs_dir).unwrap();
+        let transcript_path = logs_dir.join("transcript.jsonl");
+        let mut file = fs::File::create(transcript_path).unwrap();
+        for line in lines {
+            writeln!(file, "{}", serde_json::to_string(line).unwrap()).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_antigravity_reads_brain_transcript_and_project_path() {
+        let tmp = TempDir::new().unwrap();
+        create_antigravity_transcript(
+            tmp.path(),
+            "brain-session-001",
+            &[
+                json!({
+                    "step_index": 1,
+                    "source": "USER_EXPLICIT",
+                    "type": "USER_INPUT",
+                    "status": "DONE",
+                    "created_at": "2026-06-25T09:49:15Z",
+                    "content": "<USER_REQUEST>\n继续修复 ChatMem Antigravity 获取\n</USER_REQUEST>\n<ADDITIONAL_METADATA>noise</ADDITIONAL_METADATA>"
+                }),
+                json!({
+                    "step_index": 2,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "status": "DONE",
+                    "created_at": "2026-06-25T09:49:30Z",
+                    "content": "我先读取仓库文件。",
+                    "thinking": "Need inspect files.",
+                    "tool_calls": [
+                        {
+                            "name": "view_file",
+                            "args": {
+                                "AbsolutePath": "\"/Volumes/DouXY/download/ChatMem/src/App.tsx\"",
+                                "Cwd": "\"/Volumes/DouXY/download/ChatMem\""
+                            }
+                        }
+                    ]
+                }),
+                json!({
+                    "step_index": 3,
+                    "source": "MODEL",
+                    "type": "RUN_COMMAND",
+                    "status": "DONE",
+                    "created_at": "2026-06-25T09:50:00Z",
+                    "content": "cargo test passed"
+                }),
+            ],
+        );
+
+        let adapter = AntigravityAdapter::with_brain_dir(tmp.path().to_path_buf());
+        let summaries = adapter.list_conversations().unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].source_agent, AgentKind::Antigravity);
+        assert_eq!(summaries[0].project_dir, "/Volumes/DouXY/download/ChatMem");
+        assert_eq!(summaries[0].file_count, 1);
+
+        let conv = adapter.read_conversation("brain-session-001").unwrap();
+        assert_eq!(conv.project_dir, "/Volumes/DouXY/download/ChatMem");
+        assert_eq!(conv.messages[0].role, Role::User);
+        assert_eq!(conv.messages[0].content, "继续修复 ChatMem Antigravity 获取");
+        assert_eq!(conv.file_changes[0].path, "/Volumes/DouXY/download/ChatMem/src/App.tsx");
+        assert_eq!(conv.messages[1].tool_calls[0].name, "view_file");
+        assert_eq!(
+            conv.messages[1].metadata.get("thinking").and_then(Value::as_str),
+            Some("Need inspect files.")
+        );
     }
 
     /// Integration test: skip if Gemini CLI is not installed.

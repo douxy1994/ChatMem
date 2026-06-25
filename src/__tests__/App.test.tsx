@@ -19,6 +19,15 @@ const mockEventListeners = new Map<string, (event: unknown) => void>();
 const appVersionPattern = /^v\d+\.\d+\.\d+$/;
 const longConversationTitle =
   "Review the latest changes in D:\\VSP\\agentswap-gui\\.worktrees\\chatmem-control-plane-v2 and focus on concrete risks instead of generic advice.";
+const defaultConversationSourceStatuses = [
+  { agent: "claude", label: "Claude", available: true },
+  { agent: "codex", label: "Codex", available: true },
+  { agent: "gemini", label: "Gemini", available: false },
+  { agent: "antigravity", label: "Antigravity", available: true },
+  { agent: "opencode", label: "OpenCode", available: true },
+  { agent: "zcode", label: "ZCode", available: true },
+  { agent: "hermes", label: "Hermes", available: true },
+];
 
 vi.mock("@tauri-apps/api/tauri", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -118,6 +127,10 @@ describe("App", () => {
     mockEventListeners.clear();
 
     mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "detect_conversation_sources") {
+        return defaultConversationSourceStatuses;
+      }
+
       if (command === "list_conversations") {
         if (payload?.agent === "codex") {
           return [
@@ -421,8 +434,9 @@ describe("App", () => {
     renderApp();
 
     fireEvent.click(await screen.findByRole("button", { name: "Sync now" }));
-    const syncingButton = await screen.findByRole("button", { name: "Syncing..." });
-    expect(syncingButton.classList.contains("is-syncing")).toBe(true);
+    const syncingButton = await screen.findByRole("button", { name: "Sync now" });
+    expect((syncingButton as HTMLButtonElement).disabled).toBe(true);
+    expect(syncingButton.classList.contains("is-syncing")).toBe(false);
     expect(syncingButton.querySelector(".workbench-sync-icon svg")).toBeTruthy();
 
     syncDeferred.resolve({
@@ -434,7 +448,7 @@ describe("App", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Sync now" }).classList.contains("is-syncing")).toBe(
+      expect((screen.getByRole("button", { name: "Sync now" }) as HTMLButtonElement).disabled).toBe(
         false,
       );
     });
@@ -852,6 +866,10 @@ describe("App", () => {
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
     );
     mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "detect_conversation_sources") {
+        return defaultConversationSourceStatuses;
+      }
+
       if (command === "list_conversations") {
         return [
           {
@@ -923,6 +941,10 @@ describe("App", () => {
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
     );
     mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "detect_conversation_sources") {
+        return defaultConversationSourceStatuses;
+      }
+
       if (command === "list_conversations") {
         return [
           {
@@ -1039,6 +1061,10 @@ describe("App", () => {
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
     );
     mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "detect_conversation_sources") {
+        return defaultConversationSourceStatuses;
+      }
+
       if (command === "list_conversations") {
         if (payload?.agent === "hermes") {
           return [
@@ -1100,12 +1126,24 @@ describe("App", () => {
     expect(await screen.findByText("Current HERMES conversation")).toBeTruthy();
   });
 
-  it("uses one compact source selector with four top-level sources", async () => {
+  it("uses one compact source selector with only available top-level sources", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
     );
     mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "detect_conversation_sources") {
+        return [
+          { agent: "claude", label: "Claude", available: true },
+          { agent: "codex", label: "Codex", available: true },
+          { agent: "gemini", label: "Gemini", available: false },
+          { agent: "antigravity", label: "Antigravity", available: true },
+          { agent: "opencode", label: "OpenCode", available: false },
+          { agent: "zcode", label: "ZCode", available: true },
+          { agent: "hermes", label: "Hermes", available: true },
+        ];
+      }
+
       if (command === "list_conversations") {
         return [
           {
@@ -1144,9 +1182,13 @@ describe("App", () => {
     expect(Array.from(sourceSelect.options).map((option) => option.textContent)).toEqual([
       "Claude",
       "Codex",
+      "Antigravity",
       "ZCode",
       "Hermes",
     ]);
+    expect(Array.from(sourceSelect.options).map((option) => option.textContent)).not.toContain(
+      "Gemini",
+    );
     expect(screen.queryByRole("button", { name: "ZCode Claude" })).toBeNull();
 
     fireEvent.change(sourceSelect, { target: { value: "zcode" } });
@@ -1162,6 +1204,10 @@ describe("App", () => {
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
     );
     mockInvoke.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      if (command === "detect_conversation_sources") {
+        return defaultConversationSourceStatuses;
+      }
+
       if (command === "list_conversations") {
         if (payload?.agent === "zcode") {
           return [

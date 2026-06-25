@@ -9,6 +9,8 @@ Do not rename or remove Gemini CLI in ChatMem. Google Antigravity CLI is a succe
 - `Gemini`
 - `Google Antigravity`
 
+This rule applies to Settings -> Agent integration. The main conversation source selector is different: it must show only agents that are actually installed or have readable local history on the current machine.
+
 ## Required Backend Changes
 
 Update the Agent integration model in `src-tauri/src/agent_integration.rs`.
@@ -58,6 +60,14 @@ Google Antigravity CLI uses:
 ```
 
 Do not write Antigravity MCP settings into `%USERPROFILE%\.gemini\settings.json`.
+
+Google Antigravity local history uses a different directory:
+
+```text
+%USERPROFILE%\.gemini\antigravity\brain\<session-id>\.system_generated\logs\transcript.jsonl
+```
+
+Do not read local history from `%USERPROFILE%\.gemini\antigravity-cli\`.
 
 ## MCP Config Shape
 
@@ -144,6 +154,45 @@ Antigravity CLI uses a separate mcp_config.json and global skills directory; Gem
 Install or repair, then restart the target agent.
 ```
 
+The main source selector must be driven by runtime availability:
+
+1. Native layer returns status for supported sources: Claude, Codex, Gemini, Antigravity, OpenCode, ZCode, Hermes.
+2. Frontend filters to `available == true`.
+3. If Gemini CLI is not installed, do not show `Gemini` in the main source selector.
+4. If `%USERPROFILE%\.gemini\antigravity\brain` exists and contains readable transcript data, show `Antigravity`.
+5. Settings -> Agent integration can still show installable integrations even when the main source selector hides them.
+
+Suggested native command:
+
+```rust
+#[tauri::command]
+async fn detect_conversation_sources() -> Result<Vec<ConversationSourceStatus>, String>
+```
+
+Each source should call the matching adapter's `is_available()`.
+
+## Antigravity Local History Adapter
+
+Add or update the Antigravity adapter so it reads JSONL transcripts from:
+
+```text
+%USERPROFILE%\.gemini\antigravity\brain\<session-id>\.system_generated\logs\transcript.jsonl
+```
+
+Parsing requirements:
+
+1. Each line is a JSON event.
+2. Map `source` values:
+   - `USER_EXPLICIT` / `USER` -> user message
+   - `MODEL` -> assistant message
+   - `SYSTEM` -> system message
+3. For user content, extract only the text inside `<USER_REQUEST>...</USER_REQUEST>` when present.
+4. Preserve `tool_calls` with their `name` and `args`.
+5. Preserve `thinking`, event `type`, and `status` in message metadata.
+6. Recover project root from tool call args such as `Cwd`, `WorkingDirectory`, `CurrentWorkingDirectory`, `ProjectPath`, or `ProjectDir`.
+7. Recover file changes from args such as `AbsolutePath`, `FilePath`, `file_path`, or `Path`.
+8. Do not use the brain session directory as `project_dir` unless no better project path exists.
+
 ## Tests
 
 Add a Windows-equivalent backend test that covers:
@@ -153,6 +202,25 @@ Add a Windows-equivalent backend test that covers:
 3. The JSON contains `mcpServers.chatmem.command`, `args`, `timeout`, and `trust`.
 4. `instructions_installed` and `mcp_installed` return true.
 5. Uninstall removes only ChatMem entries and leaves unrelated config intact.
+
+Add an Antigravity local-history parser test that creates:
+
+```text
+<temp>\brain\session-001\.system_generated\logs\transcript.jsonl
+```
+
+The fixture should include:
+
+- one `USER_EXPLICIT` event with `<USER_REQUEST>`
+- one `MODEL` event with `tool_calls[0].args.Cwd`
+- one file path in `tool_calls[0].args.AbsolutePath`
+
+Expected result:
+
+- source agent is Antigravity
+- first user message is the clean request text
+- `project_dir` equals the `Cwd` value
+- `file_changes[0].path` equals the absolute file path
 
 Run at minimum:
 
@@ -170,7 +238,11 @@ npm run build
 3. Confirm both `Gemini` and `Google Antigravity` are visible.
 4. Click install/repair on `Google Antigravity`.
 5. Confirm files exist under `%USERPROFILE%\.gemini\antigravity-cli\`.
-6. Start `agy` and ask a recall-style question for a repository.
-7. Confirm the agent can discover ChatMem guidance and can call the ChatMem MCP server after restart.
+6. Confirm an Antigravity transcript exists under `%USERPROFILE%\.gemini\antigravity\brain\...\transcript.jsonl`.
+7. Open the main source selector.
+8. Confirm unavailable agents are hidden. For example, if Gemini CLI is not installed, `Gemini` should not appear.
+9. Confirm `Antigravity` appears when Antigravity history exists.
+10. Start `agy` and ask a recall-style question for a repository.
+11. Confirm the agent can discover ChatMem guidance and can call the ChatMem MCP server after restart.
 
-Windows parity is complete when Antigravity can be installed, repaired, uninstalled, and reinstalled without changing Gemini CLI files.
+Windows parity is complete when Antigravity can be installed, repaired, uninstalled, reinstalled, and read from local history without changing Gemini CLI files.
