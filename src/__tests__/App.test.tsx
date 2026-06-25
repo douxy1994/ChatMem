@@ -290,7 +290,7 @@ describe("App", () => {
       if (command === "check_github_release_update") {
         return {
           shouldUpdate: false,
-          version: "1.3.0",
+          version: "1.3.2",
           notes: null,
           publishedAt: "2026-06-22T00:32:03Z",
           assetName: null,
@@ -300,10 +300,10 @@ describe("App", () => {
       if (command === "install_github_release_update") {
         return {
           shouldUpdate: true,
-          version: "1.3.1",
+          version: "1.3.2",
           notes: null,
           publishedAt: "2026-06-22T12:00:00Z",
-          assetName: "ChatMem_1.3.1_x64-setup.exe",
+          assetName: "ChatMem_1.3.2_x64-setup.exe",
         };
       }
 
@@ -596,7 +596,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Control Center" })).toBeTruthy();
   });
 
-  it("renders the 1.3.1 version without an About utility entry", async () => {
+  it("renders the 1.3.2 version without an About utility entry", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -604,7 +604,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect((await screen.findAllByText("v1.3.1")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("v1.3.2")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "About us" })).toBeNull();
   });
 
@@ -2664,10 +2664,10 @@ describe("App", () => {
       if (command === "check_github_release_update") {
         return {
           shouldUpdate: true,
-          version: "1.3.1",
+          version: "1.3.2",
           notes: "Bug fixes",
           publishedAt: "2026-06-22T12:00:00Z",
-          assetName: "ChatMem_1.3.1_x64-setup.exe",
+          assetName: "ChatMem_1.3.2_x64-setup.exe",
         };
       }
       return baseImplementation?.(command, payload) ?? [];

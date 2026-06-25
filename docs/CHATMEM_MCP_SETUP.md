@@ -17,7 +17,7 @@ Open ChatMem and go to:
 Settings -> Agent integration -> Install all
 ```
 
-This installs both surfaces for Claude Code, Codex, Gemini CLI, and OpenCode when their user-level config locations are available. The installer writes backups such as `.bak-YYYYMMDD-HHMMSS` before changing existing config files.
+This installs both surfaces for Claude Code, Codex, Gemini CLI, Google Antigravity CLI, OpenCode, Hermes, and ZCode when their user-level config locations are available. The installer writes backups such as `.bak-YYYYMMDD-HHMMSS` before changing existing config files.
 
 Installed app builds use:
 
@@ -32,9 +32,17 @@ The installer now treats "installed" as more than "MCP exists". Every supported 
 - Claude: `C:\Users\Liang\.claude\CLAUDE.md` plus `C:\Users\Liang\.claude\skills\chatmem\SKILL.md`
 - Codex: `C:\Users\Liang\.codex\AGENTS.md` plus the official `C:\Users\Liang\.agents\skills\chatmem\SKILL.md`; the older `C:\Users\Liang\.codex\skills\chatmem\SKILL.md` path is also written for desktop compatibility
 - Gemini: `C:\Users\Liang\.gemini\GEMINI.md`
+- Google Antigravity CLI: `C:\Users\Liang\.gemini\antigravity-cli\AGENTS.md` plus `C:\Users\Liang\.gemini\antigravity-cli\skills\chatmem\SKILL.md`
 - OpenCode: `C:\Users\Liang\.config\opencode\AGENTS.md` plus `C:\Users\Liang\.config\opencode\skills\chatmem\SKILL.md`
 
 Those rule files tell the agent to check ChatMem before asking the user to redescribe a topic that may already exist in local history.
+
+Google Antigravity CLI is installed as a separate target rather than replacing Gemini CLI:
+
+- Gemini CLI MCP: `C:\Users\Liang\.gemini\settings.json` under `mcpServers.chatmem`
+- Antigravity CLI MCP: `C:\Users\Liang\.gemini\antigravity-cli\mcp_config.json` under `mcpServers.chatmem`
+
+This keeps Gemini CLI available for enterprise/API Key setups while giving Antigravity CLI its own MCP and skill surface.
 
 OpenCode needs one extra nudge beyond MCP. The installer writes:
 

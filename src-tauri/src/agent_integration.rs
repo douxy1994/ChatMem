@@ -24,6 +24,7 @@ enum IntegrationAgent {
     Claude,
     Codex,
     Gemini,
+    Antigravity,
     OpenCode,
     Hermes,
     ZCode,
@@ -57,11 +58,12 @@ pub struct AgentIntegrationOperationResult {
 }
 
 impl IntegrationAgent {
-    fn all() -> [Self; 6] {
+    fn all() -> [Self; 7] {
         [
             Self::Claude,
             Self::Codex,
             Self::Gemini,
+            Self::Antigravity,
             Self::OpenCode,
             Self::Hermes,
             Self::ZCode,
@@ -73,6 +75,7 @@ impl IntegrationAgent {
             "claude" => Some(Self::Claude),
             "codex" => Some(Self::Codex),
             "gemini" => Some(Self::Gemini),
+            "antigravity" => Some(Self::Antigravity),
             "opencode" => Some(Self::OpenCode),
             "hermes" => Some(Self::Hermes),
             "zcode" => Some(Self::ZCode),
@@ -85,6 +88,7 @@ impl IntegrationAgent {
             Self::Claude => "claude",
             Self::Codex => "codex",
             Self::Gemini => "gemini",
+            Self::Antigravity => "antigravity",
             Self::OpenCode => "opencode",
             Self::Hermes => "hermes",
             Self::ZCode => "zcode",
@@ -96,6 +100,7 @@ impl IntegrationAgent {
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini",
+            Self::Antigravity => "Google Antigravity",
             Self::OpenCode => "OpenCode",
             Self::Hermes => "Hermes",
             Self::ZCode => "ZCode",
@@ -107,6 +112,11 @@ impl IntegrationAgent {
             Self::Claude => paths.home_dir.join(".claude.json"),
             Self::Codex => paths.home_dir.join(".codex").join("config.toml"),
             Self::Gemini => paths.home_dir.join(".gemini").join("settings.json"),
+            Self::Antigravity => paths
+                .home_dir
+                .join(".gemini")
+                .join("antigravity-cli")
+                .join("mcp_config.json"),
             Self::OpenCode => paths
                 .home_dir
                 .join(".config")
@@ -141,6 +151,13 @@ impl IntegrationAgent {
                 .join("chatmem")
                 .join("SKILL.md"),
             Self::Gemini => paths.home_dir.join(".gemini").join("GEMINI.md"),
+            Self::Antigravity => paths
+                .home_dir
+                .join(".gemini")
+                .join("antigravity-cli")
+                .join("skills")
+                .join("chatmem")
+                .join("SKILL.md"),
             Self::OpenCode => paths
                 .home_dir
                 .join(".config")
@@ -202,6 +219,14 @@ fn opencode_rules_path(paths: &IntegrationPaths) -> PathBuf {
         .home_dir
         .join(".config")
         .join("opencode")
+        .join("AGENTS.md")
+}
+
+fn antigravity_rules_path(paths: &IntegrationPaths) -> PathBuf {
+    paths
+        .home_dir
+        .join(".gemini")
+        .join("antigravity-cli")
         .join("AGENTS.md")
 }
 
@@ -824,6 +849,12 @@ fn instructions_installed(agent: IntegrationAgent, paths: &IntegrationPaths) -> 
         IntegrationAgent::Gemini => fs::read_to_string(path)
             .map(|content| content.contains(MANAGED_BLOCK_START))
             .unwrap_or(false),
+        IntegrationAgent::Antigravity => {
+            path.exists()
+                && fs::read_to_string(antigravity_rules_path(paths))
+                    .map(|content| content.contains(MANAGED_BLOCK_START))
+                    .unwrap_or(false)
+        }
         IntegrationAgent::OpenCode => {
             path.exists()
                 && fs::read_to_string(opencode_rules_path(paths))
@@ -839,9 +870,11 @@ fn mcp_installed(agent: IntegrationAgent, paths: &IntegrationPaths) -> bool {
     let path = agent.config_path(paths);
     match agent {
         IntegrationAgent::Codex => codex_has_chatmem(&path),
-        IntegrationAgent::Claude | IntegrationAgent::Gemini => read_json_object(&path)
-            .map(|value| json_has_server(&value, "mcpServers"))
-            .unwrap_or(false),
+        IntegrationAgent::Claude | IntegrationAgent::Gemini | IntegrationAgent::Antigravity => {
+            read_json_object(&path)
+                .map(|value| json_has_server(&value, "mcpServers"))
+                .unwrap_or(false)
+        }
         IntegrationAgent::OpenCode => read_json_object(&path)
             .map(|value| json_has_server(&value, "mcp"))
             .unwrap_or(false),
@@ -890,6 +923,11 @@ fn status_for_agent(agent: IntegrationAgent, paths: &IntegrationPaths) -> AgentI
             IntegrationAgent::Gemini => {
                 details.push("ChatMem GEMINI.md 规则已安装。".to_string());
             }
+            IntegrationAgent::Antigravity => {
+                details.push(
+                    "ChatMem skill 和 Antigravity CLI 全局 AGENTS.md 规则已安装。".to_string(),
+                );
+            }
             IntegrationAgent::OpenCode => {
                 details.push("ChatMem skill 和 OpenCode 全局 AGENTS.md 规则已安装。".to_string());
             }
@@ -912,6 +950,10 @@ fn status_for_agent(agent: IntegrationAgent, paths: &IntegrationPaths) -> AgentI
             ),
             IntegrationAgent::Gemini => details.push(
                 "Gemini 主要依赖 GEMINI.md 规则引导调用 MCP；未安装时不会主动回忆。".to_string(),
+            ),
+            IntegrationAgent::Antigravity => details.push(
+                "Antigravity CLI 使用独立的 mcp_config.json 和全局 skills 目录；Gemini CLI 仍单独保留。"
+                    .to_string(),
             ),
             IntegrationAgent::OpenCode => details.push(
                 "OpenCode 需要同时安装 ChatMem skill 和全局 AGENTS.md 规则；缺任一项都可能不会自动触发。"
@@ -961,6 +1003,9 @@ fn install_one(
         IntegrationAgent::Gemini => {
             install_json_server(&config_path, "mcpServers", chatmem_gemini_json(paths))?
         }
+        IntegrationAgent::Antigravity => {
+            install_json_server(&config_path, "mcpServers", chatmem_gemini_json(paths))?
+        }
         IntegrationAgent::OpenCode => install_opencode_config(&config_path, paths)?,
         IntegrationAgent::Hermes => install_hermes_config(&config_path, paths)?,
         IntegrationAgent::ZCode => install_opencode_config(&config_path, paths)?,
@@ -979,6 +1024,13 @@ fn install_one(
             backups
         }
         IntegrationAgent::Gemini => install_managed_instructions(&agent.instructions_path(paths))?,
+        IntegrationAgent::Antigravity => {
+            let mut backups = install_skill_tree(agent, paths)?;
+            backups.extend(install_managed_instructions(&antigravity_rules_path(
+                paths,
+            ))?);
+            backups
+        }
         IntegrationAgent::OpenCode => {
             let mut backups = install_skill_tree(agent, paths)?;
             backups.extend(install_managed_instructions(&opencode_rules_path(paths))?);
@@ -1008,7 +1060,7 @@ fn uninstall_one(
     let mut backups = Vec::new();
 
     let config_backup = match agent {
-        IntegrationAgent::Claude | IntegrationAgent::Gemini => {
+        IntegrationAgent::Claude | IntegrationAgent::Gemini | IntegrationAgent::Antigravity => {
             uninstall_json_server(&config_path, "mcpServers")?
         }
         IntegrationAgent::Codex => uninstall_codex_config(&config_path)?,
@@ -1039,6 +1091,14 @@ fn uninstall_one(
             let backup = uninstall_managed_instructions(&agent.instructions_path(paths))?;
             backups.extend(backup);
             backups.last().is_some()
+        }
+        IntegrationAgent::Antigravity => {
+            let mut removed = uninstall_skill_tree(agent, paths)?;
+            if let Some(backup) = uninstall_managed_instructions(&antigravity_rules_path(paths))? {
+                backups.push(backup);
+                removed = true;
+            }
+            removed
         }
         IntegrationAgent::OpenCode => {
             let mut removed = uninstall_skill_tree(agent, paths)?;
@@ -1176,6 +1236,51 @@ mod tests {
             .unwrap()
             .contains("中文用户问"));
         assert!(instructions_installed(IntegrationAgent::OpenCode, &paths));
+    }
+
+    #[test]
+    fn installs_antigravity_cli_as_distinct_gemini_successor() {
+        let paths = test_paths("antigravity");
+        let agent = selected_agents("antigravity").unwrap().remove(0);
+
+        install_one(agent, &paths).unwrap();
+
+        let config = paths
+            .home_dir
+            .join(".gemini")
+            .join("antigravity-cli")
+            .join("mcp_config.json");
+        let skill = paths
+            .home_dir
+            .join(".gemini")
+            .join("antigravity-cli")
+            .join("skills")
+            .join("chatmem")
+            .join("SKILL.md");
+        let rules = paths
+            .home_dir
+            .join(".gemini")
+            .join("antigravity-cli")
+            .join("AGENTS.md");
+
+        let antigravity = read_json_object(&config).unwrap();
+        assert_eq!(antigravity["mcpServers"]["chatmem"]["trust"], json!(true));
+        assert_eq!(
+            antigravity["mcpServers"]["chatmem"]["command"],
+            json!(path_to_string(&paths.executable_path))
+        );
+        assert!(skill.exists());
+        assert!(fs::read_to_string(&rules)
+            .unwrap()
+            .contains("read_history_conversation"));
+        assert!(instructions_installed(agent, &paths));
+        assert!(mcp_installed(agent, &paths));
+
+        uninstall_one(agent, &paths).unwrap();
+        let updated = read_json_object(&config).unwrap();
+        assert!(updated["mcpServers"].get("chatmem").is_none());
+        assert!(!skill.exists());
+        assert!(fs::read_to_string(&rules).unwrap_or_default().is_empty());
     }
 
     #[test]

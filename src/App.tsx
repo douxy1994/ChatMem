@@ -3731,16 +3731,16 @@ function App() {
       {
         label: locale === "en" ? "Version" : "版本号",
         value: `v${packageInfo.version}`,
-        ok: packageInfo.version === "1.3.0",
+        ok: packageInfo.version === "1.3.2",
       },
       {
         label: locale === "en" ? "Release notes" : "发布说明",
-        value: "docs/releases/v1.3.0.md",
+        value: "docs/releases/v1.3.2.md",
         ok: true,
       },
       {
         label: locale === "en" ? "Windows parity guide" : "Windows 同步文档",
-        value: "docs/windows-v1.3.0-workbench-implementation.md",
+        value: "docs/windows-v1.3.2-antigravity-implementation.md",
         ok: true,
       },
       {

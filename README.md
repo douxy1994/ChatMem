@@ -1,19 +1,32 @@
 # ChatMem
 
-## v1.3.1 Release Status
+## v1.3.2 Release Status
 
-- The `v1.3.1` GitHub Release includes the macOS Apple Silicon DMG, the Windows x64 NSIS installer, and the Windows x64 MSI installer.
-- Recommended Windows download: `ChatMem_1.3.1_x64-setup.exe`.
+- The `v1.3.2` GitHub Release adds Google Antigravity CLI integration on top of the v1.3.x workbench and sync fixes.
+- macOS Apple Silicon DMG is attached to the release. Windows developers should use the parity guide below to ship the matching Windows build.
 - In-app update checks read the latest GitHub Release tag directly. If a newer release includes a Windows installer, ChatMem downloads and launches it. If the installed version already matches the latest release, ChatMem reports that it is up to date.
-- Full release notes: [`docs/releases/v1.3.1.md`](./docs/releases/v1.3.1.md).
+- Full release notes: [`docs/releases/v1.3.2.md`](./docs/releases/v1.3.2.md).
 
-ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、Codex、Gemini、OpenCode、ZCode 等本地对话历史整理成可搜索、可恢复、可迁移、可继续使用的项目上下文。
+ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、Codex、Gemini、OpenCode、ZCode、Hermes 等本地对话历史整理成可搜索、可恢复、可迁移、可继续使用的项目上下文。
 
 它不是另一个聊天客户端。ChatMem 解决的是 AI 编程里最容易断线的部分：换 agent、换窗口、换机器、隔几天回来，模型不知道之前发生过什么。ChatMem 会把本地对话作为证据层索引，再把稳定知识沉淀为启动规则、Wiki、checkpoint 和 handoff，并通过桌面端与 MCP 把这些上下文带回新的 agent 会话。
 
 ## 当前版本
 
-最新版本：`v1.3.1`
+最新版本：`v1.3.2`
+
+### v1.3.2 重点更新
+
+**Google Antigravity CLI 集成**
+- 设置 -> Agent 集成新增 `Google Antigravity`，与原 `Gemini` 保持并存。
+- Antigravity CLI 使用独立配置：`~/.gemini/antigravity-cli/mcp_config.json`。
+- ChatMem skill 写入：`~/.gemini/antigravity-cli/skills/chatmem/SKILL.md`。
+- 全局引导规则写入：`~/.gemini/antigravity-cli/AGENTS.md`。
+- 原 Gemini CLI 配置仍保留在 `~/.gemini/settings.json` 和 `~/.gemini/GEMINI.md`，用于企业授权或 API Key 仍需 Gemini CLI 的场景。
+
+**开发文档**
+- Release 说明见 `docs/releases/v1.3.2.md`。
+- Windows 端同功能实现指南见 `docs/windows-v1.3.2-antigravity-implementation.md`。
 
 ### v1.3.1 重点更新
 
