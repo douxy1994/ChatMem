@@ -4,6 +4,7 @@ type AgentType =
   | "claude"
   | "codex"
   | "gemini"
+  | "antigravity"
   | "opencode"
   | "zcode"
   | "hermes";

@@ -183,6 +183,7 @@ struct SyncSettingsPayload {
     webdav_host: String,
     webdav_path: String,
     username: String,
+    password: Option<String>,
     remote_path: String,
     download_mode: String,
     #[serde(default)]
@@ -354,6 +355,7 @@ fn agent_key(agent: &AgentKind) -> &'static str {
         AgentKind::ZCodeCodex => "zcode-codex",
         AgentKind::ZCodeGemini => "zcode-gemini",
         AgentKind::ZCodeOpenCode => "zcode-opencode",
+        AgentKind::Antigravity => "antigravity",
         AgentKind::Hermes => "hermes",
     }
 }
@@ -1579,10 +1581,15 @@ async fn load_webdav_password(username: String) -> Result<Option<String>, String
     let entry = webdav_credential_entry(username)?;
     match entry.get_password() {
         Ok(password) => Ok(Some(password)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(format!(
-            "Cannot read WebDAV password from OS credential store: {error}"
-        )),
+        Err(_) => {
+            // Fallback to reading from local settings.json if Keychain fails or is inaccessible
+            if let Ok(Some(settings)) = read_app_settings_from_disk() {
+                if settings.sync.username.trim() == username {
+                    return Ok(settings.sync.password);
+                }
+            }
+            Ok(None)
+        }
     }
 }
 
@@ -1594,9 +1601,18 @@ async fn save_webdav_password(username: String, password: String) -> Result<(), 
     }
 
     let entry = webdav_credential_entry(username)?;
-    entry
-        .set_password(&password)
-        .map_err(|error| format!("Cannot save WebDAV password to OS credential store: {error}"))
+    let _ = entry.set_password(&password);
+
+    // Always save to settings.json as a fallback, because ad-hoc signed apps 
+    // lose macOS Keychain access across updates/reinstalls.
+    if let Ok(Some(mut settings)) = read_app_settings_from_disk() {
+        if settings.sync.username.trim() == username {
+            settings.sync.password = Some(password.clone());
+            let _ = save_app_settings(settings).await;
+        }
+    }
+
+    Ok(())
 }
 
 #[command]

@@ -66,6 +66,7 @@ export type SyncSettings = {
   webdavHost: string;
   webdavPath: string;
   username: string;
+  password?: string;
   remotePath: string;
   downloadMode: DownloadMode;
   syncFolder: string;
@@ -141,6 +142,7 @@ export function normalizeSyncSettings(value: unknown): SyncSettings {
     webdavPath:
       typeof parsed.webdavPath === "string" ? parsed.webdavPath : parsedUrl.webdavPath,
     username: typeof parsed.username === "string" ? parsed.username : "",
+    password: typeof parsed.password === "string" ? parsed.password : undefined,
     remotePath: typeof parsed.remotePath === "string" && parsed.remotePath.trim() ? parsed.remotePath : "chatmem",
     downloadMode: parsed.downloadMode === "as-needed" ? "as-needed" : "on-sync",
     syncFolder: typeof parsed.syncFolder === "string" ? parsed.syncFolder : "",

@@ -720,6 +720,93 @@ impl AgentAdapter for GeminiAdapter {
     }
 }
 
+pub struct AntigravityAdapter {
+    inner: GeminiAdapter,
+}
+
+impl Default for AntigravityAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AntigravityAdapter {
+    pub fn new() -> Self {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+        Self {
+            inner: GeminiAdapter::with_tmp_dir(home.join(".gemini").join("antigravity-cli").join("tmp")),
+        }
+    }
+}
+
+impl AgentAdapter for AntigravityAdapter {
+    fn is_available(&self) -> bool {
+        self.inner.is_available()
+    }
+
+    fn list_conversations(&self) -> Result<Vec<ConversationSummary>> {
+        let mut summaries = self.inner.list_conversations()?;
+        for summary in &mut summaries {
+            summary.source_agent = AgentKind::Antigravity;
+        }
+        Ok(summaries)
+    }
+
+    fn read_conversation(&self, id: &str) -> Result<Conversation> {
+        let mut conv = self.inner.read_conversation(id)?;
+        conv.source_agent = AgentKind::Antigravity;
+        Ok(conv)
+    }
+
+    fn render_prompt(&self, conversation: &Conversation) -> Result<String> {
+        let mut text = String::new();
+        text.push_str(&format!(
+            "# Conversation: {}\n\n",
+            conversation.summary.as_deref().unwrap_or(conversation.id.as_str())
+        ));
+        text.push_str("**Source:** Google Antigravity\n");
+        text.push_str(&format!(
+            "**Started:** {}\n",
+            conversation.created_at.to_rfc3339()
+        ));
+        text.push_str(&format!(
+            "**Last Updated:** {}\n\n",
+            conversation.updated_at.to_rfc3339()
+        ));
+
+        for msg in &conversation.messages {
+            text.push_str(&format!("## {:?}\n", msg.role));
+            text.push_str(&format!("**Time:** {}\n\n", msg.timestamp.to_rfc3339()));
+            if !msg.content.trim().is_empty() {
+                text.push_str(&msg.content);
+                text.push_str("\n\n");
+            }
+        }
+
+        Ok(text)
+    }
+
+    fn agent_kind(&self) -> AgentKind {
+        AgentKind::Antigravity
+    }
+
+    fn display_name(&self) -> &str {
+        "Google Antigravity"
+    }
+
+    fn data_dir(&self) -> PathBuf {
+        self.inner.data_dir()
+    }
+
+    fn delete_conversation(&self, id: &str) -> Result<()> {
+        self.inner.delete_conversation(id)
+    }
+
+    fn write_conversation(&self, conversation: &Conversation) -> Result<String> {
+        self.inner.write_conversation(conversation)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

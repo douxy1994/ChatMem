@@ -38,6 +38,7 @@ fn agent_family(agent: &AgentKind) -> AgentKind {
         AgentKind::ZCodeCodex => AgentKind::Codex,
         AgentKind::ZCodeGemini => AgentKind::Gemini,
         AgentKind::ZCodeOpenCode => AgentKind::OpenCode,
+        AgentKind::Antigravity => AgentKind::Gemini,
         AgentKind::Hermes => AgentKind::Claude,
         other => other.clone(),
     }
@@ -102,6 +103,7 @@ fn to_canonical(agent: &AgentKind, name: &str) -> Canonical {
         | AgentKind::ZCodeCodex
         | AgentKind::ZCodeGemini
         | AgentKind::ZCodeOpenCode
+        | AgentKind::Antigravity
         | AgentKind::Hermes => to_canonical(&agent_family(agent), name),
     }
 }
@@ -154,6 +156,7 @@ fn from_canonical(agent: &AgentKind, canonical: &Canonical) -> String {
         | AgentKind::ZCodeCodex
         | AgentKind::ZCodeGemini
         | AgentKind::ZCodeOpenCode
+        | AgentKind::Antigravity
         | AgentKind::Hermes => from_canonical(&agent_family(agent), canonical),
     }
 }

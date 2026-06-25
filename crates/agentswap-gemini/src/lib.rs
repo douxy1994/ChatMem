@@ -3,4 +3,4 @@
 pub mod adapter;
 pub mod parser;
 
-pub use adapter::GeminiAdapter;
+pub use adapter::{AntigravityAdapter, GeminiAdapter};

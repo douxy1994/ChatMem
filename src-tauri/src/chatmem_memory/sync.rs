@@ -3,6 +3,7 @@ use agentswap_codex::CodexAdapter;
 use agentswap_core::{adapter::AgentAdapter, types::Conversation};
 use agentswap_gemini::GeminiAdapter;
 use agentswap_opencode::OpenCodeAdapter;
+use agentswap_gemini::AntigravityAdapter;
 use agentswap_zcode::{
     ZCodeAdapter, ZCodeClaudeAdapter, ZCodeCodexAdapter, ZCodeGeminiAdapter, ZCodeOpenCodeAdapter,
 };
@@ -20,7 +21,7 @@ use super::{
     store::MemoryStore,
 };
 
-const LOCAL_HISTORY_AGENTS: &[&str] = &["claude", "codex", "gemini", "opencode", "zcode"];
+const LOCAL_HISTORY_AGENTS: &[&str] = &["claude", "codex", "gemini", "opencode", "zcode", "antigravity"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +41,7 @@ pub fn build_resume_command(agent: &str, id: &str) -> Option<String> {
         "claude" => Some(format!("claude --resume {}", id)),
         "codex" => Some(format!("codex resume {}", id)),
         "gemini" => Some(format!("gemini --resume {}", id)),
+        "antigravity" => Some(format!("antigravity --resume {}", id)),
         "opencode" => Some(format!("opencode --session {}", id)),
         "zcode" | "zcode-claude" | "zcode-codex" | "zcode-gemini" | "zcode-opencode" => None,
         _ => None,
@@ -116,6 +118,44 @@ pub fn resolve_opencode_storage_path(id: &str) -> Option<String> {
     Some(adapter.db_path().display().to_string())
 }
 
+pub fn resolve_antigravity_storage_path(id: &str) -> Option<String> {
+    let tmp_dir = dirs::home_dir()?.join(".gemini").join("antigravity-cli").join("tmp");
+
+    WalkDir::new(tmp_dir)
+        .min_depth(3)
+        .max_depth(3)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .find_map(|entry| {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                return None;
+            }
+
+            let parent_name = path
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())?;
+            if parent_name != "chats" {
+                return None;
+            }
+
+            let file_name = path.file_name()?.to_string_lossy();
+            if file_name == format!("session-{id}.json") || file_name == format!("{id}.json") {
+                return Some(path.display().to_string());
+            }
+
+            let data = std::fs::read(path).ok()?;
+            let parsed = serde_json::from_slice::<serde_json::Value>(&data).ok()?;
+            let session_id = parsed.get("sessionId").and_then(|value| value.as_str())?;
+            if session_id == id {
+                Some(path.display().to_string())
+            } else {
+                None
+            }
+        })
+}
+
 pub fn resolve_zcode_claude_storage_path(id: &str) -> Option<String> {
     ZCodeClaudeAdapter::new().storage_path_for_id(id)
 }
@@ -133,6 +173,7 @@ pub fn resolve_storage_path(agent: &str, id: &str) -> Option<String> {
         "claude" => resolve_claude_storage_path(id),
         "codex" => resolve_codex_storage_path(id),
         "gemini" => resolve_gemini_storage_path(id),
+        "antigravity" => resolve_antigravity_storage_path(id),
         "opencode" => resolve_opencode_storage_path(id),
         "zcode" => resolve_zcode_storage_path(id),
         "zcode-claude" => resolve_zcode_claude_storage_path(id),
@@ -147,6 +188,7 @@ fn get_adapter(agent: &str) -> Option<Box<dyn AgentAdapter>> {
         "claude" => Some(Box::new(ClaudeAdapter::new())),
         "codex" => Some(Box::new(CodexAdapter::new())),
         "gemini" => Some(Box::new(GeminiAdapter::new())),
+        "antigravity" => Some(Box::new(AntigravityAdapter::new())),
         "opencode" => Some(Box::new(OpenCodeAdapter::new())),
         "zcode" => Some(Box::new(ZCodeAdapter::new())),
         "zcode-claude" => Some(Box::new(ZCodeClaudeAdapter::new())),
@@ -241,7 +283,7 @@ fn is_codex_family_agent(agent: &str) -> bool {
 }
 
 fn is_gemini_family_agent(agent: &str) -> bool {
-    matches!(agent, "gemini" | "zcode-gemini")
+    matches!(agent, "gemini" | "antigravity" | "zcode-gemini")
 }
 
 fn is_standalone_history_project(agent: &str, project_dir: &str) -> bool {

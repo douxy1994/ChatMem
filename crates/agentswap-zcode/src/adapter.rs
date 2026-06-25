@@ -519,9 +519,9 @@ impl AgentAdapter for ZCodeAdapter {
                 .codex_adapter()
                 .write_conversation(conv)
                 .map(|id| encode_zcode_cli_id(CODEX_ENGINE, &id)),
-            AgentKind::Gemini | AgentKind::ZCodeGemini => {
+            AgentKind::Gemini | AgentKind::ZCodeGemini | AgentKind::Antigravity => {
                 anyhow::bail!(
-                    "ZCode Gemini write is disabled until a native conversation store is detected"
+                    "ZCode Gemini/Antigravity write is disabled until a native conversation store is detected"
                 )
             }
             AgentKind::OpenCode | AgentKind::ZCodeOpenCode => {

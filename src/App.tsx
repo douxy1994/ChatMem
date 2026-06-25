@@ -176,6 +176,7 @@ type AgentType =
   | "claude"
   | "codex"
   | "gemini"
+  | "antigravity"
   | "opencode"
   | "zcode"
   | "hermes";
@@ -399,6 +400,8 @@ const COPY_RESET_DELAY_MS = 1800;
 const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
   { value: "claude", label: "Claude" },
   { value: "codex", label: "Codex" },
+  { value: "gemini", label: "Gemini" },
+  { value: "antigravity", label: "Antigravity" },
   { value: "zcode", label: "ZCode" },
   { value: "hermes", label: "Hermes" },
 ];
@@ -406,10 +409,11 @@ const ZCODE_CLI_LABELS: Record<string, string> = {
   claude: "Claude",
   codex: "Codex",
   gemini: "Gemini",
+  antigravity: "Antigravity",
   opencode: "OpenCode",
   glm: "GLM",
 };
-const ZCODE_CLI_ORDER = ["claude", "codex", "gemini", "opencode", "glm", "unknown"];
+const ZCODE_CLI_ORDER = ["claude", "codex", "gemini", "antigravity", "opencode", "glm", "unknown"];
 const TARGET_PROFILE_OPTIONS: Record<string, HandoffTargetProfileOption[]> = {
   claude: [
     {
@@ -5276,7 +5280,7 @@ function App() {
           <article className="about-detail-card">
             <WindowButtonIcon type="migrate" />
             <span>{locale === "en" ? "Agent scope" : "Agent 范围"}</span>
-            <strong>Claude / Codex / Gemini / OpenCode / ZCode</strong>
+            <strong>Claude / Codex / Gemini / Antigravity / OpenCode / ZCode</strong>
           </article>
           <article className="about-detail-card">
             <WindowButtonIcon type="shield" />
