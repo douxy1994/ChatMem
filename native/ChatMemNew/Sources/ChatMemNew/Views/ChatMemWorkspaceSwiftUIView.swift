@@ -3,12 +3,15 @@ import AppKit
 
 struct ChatMemWorkspaceSwiftUIView: View {
     @ObservedObject var store: AppStore
+    @State private var showingAgentIntegrationList = false
+    @State private var selectedIntegrationAgent: AgentKind?
 
     var body: some View {
         ZStack {
             SwiftUITheme.appBackground
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    workspaceCommandBar
                     switch store.workspace {
                     case .workbench:
                         workbench
@@ -41,6 +44,34 @@ struct ChatMemWorkspaceSwiftUIView: View {
                     .padding(16)
             )
         }
+    }
+
+    private var workspaceCommandBar: some View {
+        HStack(spacing: 8) {
+            Spacer()
+            commandChip("继续工作", "rectangle.grid.1x2", .workbench)
+            commandChip("待确认", "checklist", .review)
+            commandChip("历史", "clock.arrow.circlepath", .history)
+            commandChip("设置", "gearshape", .settings)
+            Button {
+                store.toggleMemoryDrawer(tab: .review)
+            } label: {
+                Label("记忆视图", systemImage: "tray.full")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(SwiftUITheme.accent)
+        }
+    }
+
+    private func commandChip(_ title: String, _ icon: String, _ destination: WorkspaceDestination) -> some View {
+        Button {
+            store.openWorkspace(destination)
+        } label: {
+            Label(title, systemImage: icon)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .tint(store.workspace == destination ? SwiftUITheme.accent : SwiftUITheme.secondaryText)
     }
 
     private var conversationWorkspace: some View {
@@ -243,6 +274,18 @@ struct ChatMemWorkspaceSwiftUIView: View {
     }
 
     private var settings: some View {
+        if let selectedIntegrationAgent {
+            return AnyView(agentIntegrationDetail(selectedIntegrationAgent))
+        }
+
+        if showingAgentIntegrationList {
+            return AnyView(agentIntegrationList)
+        }
+
+        return AnyView(settingsRoot)
+    }
+
+    private var settingsRoot: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
@@ -263,11 +306,11 @@ struct ChatMemWorkspaceSwiftUIView: View {
                 }
 
                 settingsPanel("Agent 集成", "安装 MCP 与各 Agent 的原生引导入口。") {
-                    settingRow("Claude", value: "MCP + 引导入口")
-                    settingRow("Codex", value: "MCP + AGENTS.md 指令")
-                    settingRow("Hermes / ZCode / OpenCode", value: "待检测")
+                    settingRow("已支持 Agent", value: "\(AgentKind.allCases.count) 个")
+                    settingRow("配置方式", value: "逐个 Agent 单独配置")
+                    settingRow("状态", value: "MCP / 引导入口 / 配置路径")
                     HStack {
-                        primaryButton("一键安装到全部", "square.and.arrow.down") { store.showQueuedAction("一键安装 Agent 集成") }
+                        primaryButton("进入 Agent 配置", "rectangle.stack") { showingAgentIntegrationList = true }
                         secondaryButton("重新检测", "arrow.clockwise") { store.showQueuedAction("重新检测 Agent 集成") }
                     }
                 }
@@ -302,6 +345,106 @@ struct ChatMemWorkspaceSwiftUIView: View {
                     settingRow("回收站保留", value: "14 天")
                     settingRow("删除远端备份", value: "需要二次确认")
                     secondaryButton("清空回收站", "trash") { store.showQueuedAction("清空回收站") }
+                }
+            }
+        }
+    }
+
+    private var agentIntegrationList: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                pageHeader("Agent 集成", "逐个配置 MCP、原生引导入口、配置路径和安装动作。")
+                Spacer()
+                Button("返回设置") {
+                    showingAgentIntegrationList = false
+                    selectedIntegrationAgent = nil
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                ForEach(AgentKind.allCases) { agent in
+                    Button {
+                        selectedIntegrationAgent = agent
+                    } label: {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                agentIcon(agent)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(agent.label).font(.system(size: 17, weight: .bold))
+                                    Text(agentSubtitle(agent)).font(.system(size: 12)).foregroundStyle(SwiftUITheme.secondaryText)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(SwiftUITheme.mutedText)
+                            }
+                            HStack(spacing: 8) {
+                                statusPill("MCP", ready: agent != .gemini)
+                                statusPill("引导", ready: agent == .codex || agent == .claude)
+                                statusPill("路径", ready: true)
+                            }
+                            Text(agentConfigPath(agent))
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(SwiftUITheme.mutedText)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .chatMemCard()
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func agentIntegrationDetail(_ agent: AgentKind) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                HStack(spacing: 12) {
+                    agentIcon(agent)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(agent.label) 集成配置").font(.system(size: 26, weight: .bold))
+                        Text(agentSubtitle(agent)).foregroundStyle(SwiftUITheme.secondaryText)
+                    }
+                }
+                Spacer()
+                Button("返回 Agent 列表") {
+                    selectedIntegrationAgent = nil
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                settingsPanel("MCP 配置", "让该 Agent 能通过 MCP 调用 ChatMem。") {
+                    settingRow("安装状态", value: agent == .gemini ? "待修复" : "已检测")
+                    settingRow("Server 名称", value: "chatmem")
+                    settingRow("启动命令", value: mcpCommand(agent))
+                    HStack {
+                        primaryButton("安装 / 修复 MCP", "wrench.and.screwdriver") { store.showQueuedAction("安装 \(agent.label) MCP") }
+                        secondaryButton("复制命令", "doc.on.doc") { copy(mcpCommand(agent)) }
+                    }
+                }
+
+                settingsPanel("原生引导入口", "写入该 Agent 自己会读取的规则文件。") {
+                    settingRow("安装状态", value: agent == .codex || agent == .claude ? "已检测" : "未安装")
+                    settingRow("入口文件", value: guidancePath(agent))
+                    settingRow("触发词", value: "继续 / 记得吗 / 迁移 / 本地历史")
+                    HStack {
+                        primaryButton("安装引导", "square.and.arrow.down") { store.showQueuedAction("安装 \(agent.label) 引导入口") }
+                        secondaryButton("打开路径", "folder") { store.showQueuedAction("打开 \(agent.label) 引导路径") }
+                    }
+                }
+
+                settingsPanel("路径与权限", "显示配置文件、历史目录和可写状态。") {
+                    settingRow("配置路径", value: agentConfigPath(agent))
+                    settingRow("历史目录", value: historyPath(agent))
+                    settingRow("写入权限", value: "待桥接检测")
+                    settingRow("最近检测", value: "本次 UI 预览数据")
+                }
+
+                settingsPanel("操作", "单独处理该 Agent，不影响其他 Agent。") {
+                    HStack {
+                        primaryButton("检测 \(agent.label)", "magnifyingglass") { store.showQueuedAction("检测 \(agent.label)") }
+                        secondaryButton("卸载集成", "trash") { store.showQueuedAction("卸载 \(agent.label) 集成") }
+                    }
+                    secondaryButton("重置该 Agent 状态", "arrow.counterclockwise") { store.showQueuedAction("重置 \(agent.label) 集成状态") }
                 }
             }
         }
@@ -480,6 +623,86 @@ struct ChatMemWorkspaceSwiftUIView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .chatMemCard()
+    }
+
+    private func agentIcon(_ agent: AgentKind) -> some View {
+        Text(String(agent.label.prefix(1)))
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 34, height: 34)
+            .background(agent == .codex ? SwiftUITheme.accent : SwiftUITheme.secondaryText)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func statusPill(_ title: String, ready: Bool) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(ready ? SwiftUITheme.accent : SwiftUITheme.mutedText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(ready ? SwiftUITheme.selected : SwiftUITheme.softStrong)
+            .clipShape(Capsule())
+    }
+
+    private func agentSubtitle(_ agent: AgentKind) -> String {
+        switch agent {
+        case .claude: "Claude Desktop / Claude Code 本地历史与引导"
+        case .codex: "Codex AGENTS.md、MCP 和本地线程历史"
+        case .gemini: "Gemini / Antigravity 历史与项目上下文"
+        case .antigravity: "Antigravity JSONL 历史和工作台记录"
+        case .opencode: "OpenCode 本地会话与迁移入口"
+        case .zcode: "ZCode 多 CLI 来源历史"
+        case .hermes: "Hermes 桌面端和 Hermes Agent 配置"
+        }
+    }
+
+    private func agentConfigPath(_ agent: AgentKind) -> String {
+        switch agent {
+        case .claude: "~/.claude/settings.json"
+        case .codex: "\(NSHomeDirectory())/.codex/config.toml"
+        case .gemini: "~/.gemini/settings.json"
+        case .antigravity: "~/Library/Application Support/Antigravity"
+        case .opencode: "~/.config/opencode/opencode.json"
+        case .zcode: "~/.zcode/config.json"
+        case .hermes: "~/.hermes/config.json"
+        }
+    }
+
+    private func guidancePath(_ agent: AgentKind) -> String {
+        switch agent {
+        case .claude: "~/.claude/CLAUDE.md"
+        case .codex: "AGENTS.md / ~/.codex/instructions.md"
+        case .gemini: "GEMINI.md"
+        case .antigravity: "Antigravity rules entry"
+        case .opencode: "OPENCODE.md"
+        case .zcode: "ZCODE.md"
+        case .hermes: "~/.hermes/instructions.md"
+        }
+    }
+
+    private func historyPath(_ agent: AgentKind) -> String {
+        switch agent {
+        case .claude: "~/.claude/projects"
+        case .codex: "~/.codex/history"
+        case .gemini: "~/.gemini/history"
+        case .antigravity: "~/Library/Application Support/Antigravity"
+        case .opencode: "~/.local/share/opencode"
+        case .zcode: "~/.zcode/history"
+        case .hermes: "~/.hermes/history"
+        }
+    }
+
+    private func mcpCommand(_ agent: AgentKind) -> String {
+        switch agent {
+        case .codex:
+            "chatmem --mcp --agent codex"
+        case .claude:
+            "chatmem --mcp --agent claude"
+        case .hermes:
+            "chatmem --mcp --agent hermes"
+        default:
+            "chatmem --mcp --agent \(agent.rawValue)"
+        }
     }
 
     private func settingRow(_ title: String, value: String) -> some View {

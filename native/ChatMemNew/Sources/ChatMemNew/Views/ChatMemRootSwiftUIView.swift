@@ -43,67 +43,28 @@ struct ChatMemRootSwiftUIView: View {
     }
 
     private var topbar: some View {
-        ZStack {
-            HStack {
-                Spacer(minLength: 0)
-                HStack(spacing: 10) {
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(SwiftUITheme.accent)
-                        .frame(width: 30, height: 30)
-                        .overlay(Image(systemName: "brain.head.profile").foregroundStyle(.white))
-                    Text("ChatMem")
-                        .font(.system(size: 20, weight: .bold))
-                    Text("New")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(SwiftUITheme.secondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(SwiftUITheme.softStrong)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                Spacer(minLength: 0)
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(SwiftUITheme.accent)
+                    .frame(width: 30, height: 30)
+                    .overlay(Image(systemName: "brain.head.profile").foregroundStyle(.white))
+                Text("ChatMem")
+                    .font(.system(size: 20, weight: .bold))
+                Text("New")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(SwiftUITheme.secondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(SwiftUITheme.softStrong)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
             }
-
-            HStack {
-                topNavButton("继续工作", .workbench)
-                topNavButton("待确认", .review)
-                topNavButton("历史", .history)
-                topNavButton("帮助", .help)
-                Spacer()
-                Button { store.toggleMemoryDrawer(tab: .review) } label: {
-                    Label("记忆", systemImage: "tray.full")
-                }
-                Button { store.openWorkspace(.help) } label: {
-                    Image(systemName: "questionmark.circle")
-                }
-                Button { store.openWorkspace(.about) } label: {
-                    Image(systemName: "info.circle")
-                }
-                Button { store.openWorkspace(.settings) } label: {
-                    Image(systemName: "gearshape")
-                }
-            }
-            .buttonStyle(.borderless)
-            .padding(.trailing, 16)
+            Spacer(minLength: 0)
         }
         .frame(height: 56)
         .background(.ultraThinMaterial)
         .overlay(Rectangle().fill(SwiftUITheme.border).frame(height: 1), alignment: .bottom)
-    }
-
-    private func topNavButton(_ title: String, _ destination: WorkspaceDestination) -> some View {
-        Button {
-            store.openWorkspace(destination)
-        } label: {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(store.workspace == destination ? Color.primary : SwiftUITheme.secondaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(store.workspace == destination ? Color.white.opacity(0.76) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
     }
 }
 
