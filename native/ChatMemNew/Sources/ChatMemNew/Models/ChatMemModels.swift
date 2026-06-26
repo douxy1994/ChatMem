@@ -28,6 +28,8 @@ enum WorkspaceDestination: Equatable {
     case workbench
     case conversation
     case localHistory
+    case review
+    case history
     case settings
     case favorites
     case trash

@@ -16,6 +16,10 @@ struct ChatMemWorkspaceSwiftUIView: View {
                         conversationWorkspace
                     case .localHistory:
                         localHistory
+                    case .review:
+                        review
+                    case .history:
+                        history
                     case .settings:
                         settings
                     case .favorites:
@@ -303,6 +307,87 @@ struct ChatMemWorkspaceSwiftUIView: View {
         }
     }
 
+    private var review: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            pageHeader("待确认", "只把需要人工判断的候选规则、过期规则和交接包集中在这里。")
+            HStack(alignment: .top, spacing: 14) {
+                panel("候选规则") {
+                    ForEach(store.snapshot.memoryCandidates) { candidate in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(candidate.title).font(.system(size: 14, weight: .semibold))
+                            Text(candidate.reason).foregroundStyle(SwiftUITheme.secondaryText)
+                            Text(candidate.value).font(.system(size: 12)).foregroundStyle(SwiftUITheme.mutedText)
+                            HStack {
+                                primaryButton("确认保留", "checkmark") { store.showQueuedAction("审批候选规则") }
+                                secondaryButton("稍后再看", "clock") { store.showQueuedAction("暂缓候选规则") }
+                                secondaryButton("拒绝", "xmark") { store.showQueuedAction("拒绝候选规则") }
+                            }
+                        }
+                        Divider()
+                    }
+                }
+                panel("项目规则复核") {
+                    ForEach(store.snapshot.approvedMemories) { memory in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(memory.title).font(.system(size: 14, weight: .semibold))
+                            Text(memory.usageHint).foregroundStyle(SwiftUITheme.secondaryText)
+                            Text("状态：\(memory.freshness)").font(.system(size: 11)).foregroundStyle(SwiftUITheme.mutedText)
+                            Button("重新核验") { store.showQueuedAction("重新核验规则") }
+                        }
+                        Divider()
+                    }
+                }
+                .frame(width: 320)
+            }
+            panel("待确认交接") {
+                ForEach(store.snapshot.handoffs) { handoff in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(handoff.goal).font(.system(size: 13, weight: .semibold))
+                            Text("\(handoff.fromAgent.label) → \(handoff.toAgent.label) · \(handoff.nextItem)")
+                                .foregroundStyle(SwiftUITheme.secondaryText)
+                        }
+                        Spacer()
+                        Button("标记已查看") { store.showQueuedAction("标记交接包已查看") }
+                    }
+                }
+            }
+        }
+    }
+
+    private var history: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            pageHeader("历史", "需要下钻时再看详细记录：对话、恢复、交接、输出和阶段。")
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                historyPanel("对话", "打开完整 transcript、工具调用和文件变更。", "\(store.snapshot.conversations.count) 条记录") {
+                    store.openWorkspace(.conversation)
+                }
+                historyPanel("恢复", "检查点、恢复命令和可提升为交接包的状态。", "\(store.snapshot.checkpoints.count) 个检查点") {
+                    store.showQueuedAction("打开恢复历史")
+                }
+                historyPanel("交接", "跨 Agent handoff packet 和接收状态。", "\(store.snapshot.handoffs.count) 个交接包") {
+                    store.showQueuedAction("打开交接历史")
+                }
+                historyPanel("输出", "运行记录、产物和阶段性摘要。", "\(store.snapshot.runs.count) 个运行 / \(store.snapshot.artifacts.count) 个产物") {
+                    store.showQueuedAction("打开输出历史")
+                }
+            }
+            panel("项目资料库") {
+                ForEach(store.snapshot.wikiPages) { page in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(page.title).font(.system(size: 13, weight: .semibold))
+                            Text(page.preview).foregroundStyle(SwiftUITheme.secondaryText)
+                        }
+                        Spacer()
+                        Button("打开") { store.toggleMemoryDrawer(tab: .wiki) }
+                    }
+                    Divider()
+                }
+            }
+        }
+    }
+
     private var help: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("帮助").font(.system(size: 26, weight: .bold))
@@ -339,6 +424,24 @@ struct ChatMemWorkspaceSwiftUIView: View {
                 .chatMemCard()
             }
         }
+    }
+
+    private func pageHeader(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.system(size: 26, weight: .bold))
+            Text(subtitle).foregroundStyle(SwiftUITheme.secondaryText)
+        }
+    }
+
+    private func historyPanel(_ title: String, _ body: String, _ stat: String, action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.system(size: 17, weight: .bold))
+            Text(body).foregroundStyle(SwiftUITheme.secondaryText)
+            Text(stat).font(.system(size: 20, weight: .bold))
+            Button("打开") { action() }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .chatMemCard()
     }
 
     private func panel<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {

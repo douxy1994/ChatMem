@@ -65,6 +65,10 @@ struct ChatMemRootSwiftUIView: View {
             }
 
             HStack {
+                topNavButton("继续工作", .workbench)
+                topNavButton("待确认", .review)
+                topNavButton("历史", .history)
+                topNavButton("帮助", .help)
                 Spacer()
                 Button { store.toggleMemoryDrawer(tab: .review) } label: {
                     Label("记忆", systemImage: "tray.full")
@@ -85,6 +89,21 @@ struct ChatMemRootSwiftUIView: View {
         .frame(height: 56)
         .background(.ultraThinMaterial)
         .overlay(Rectangle().fill(SwiftUITheme.border).frame(height: 1), alignment: .bottom)
+    }
+
+    private func topNavButton(_ title: String, _ destination: WorkspaceDestination) -> some View {
+        Button {
+            store.openWorkspace(destination)
+        } label: {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(store.workspace == destination ? Color.primary : SwiftUITheme.secondaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(store.workspace == destination ? Color.white.opacity(0.76) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
     }
 }
 

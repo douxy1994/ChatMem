@@ -27,6 +27,10 @@ final class WorkspaceView: NSView {
             next = conversationWorkspace()
         case .localHistory:
             next = localHistoryWorkspace()
+        case .review:
+            next = UtilityWorkspaces.help()
+        case .history:
+            next = localHistoryWorkspace()
         case .settings:
             next = SettingsView(store: store)
         case .favorites:
