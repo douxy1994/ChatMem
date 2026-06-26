@@ -1,17 +1,18 @@
 import Foundation
+import Combine
 
 @MainActor
-final class AppStore {
+final class AppStore: ObservableObject {
     let bridge: NativeBridge
     let telemetry = Telemetry()
-    private(set) var snapshot: AppSnapshot
-    var selectedAgent: AgentKind = .codex
-    var selectedConversationID: String?
-    var searchQuery = ""
-    var workspace: WorkspaceDestination = .workbench
-    var memoryDrawerOpen = false
-    var memoryDrawerTab: MemoryDrawerTab = .review
-    var modalMessage: String?
+    @Published private(set) var snapshot: AppSnapshot
+    @Published var selectedAgent: AgentKind = .codex
+    @Published var selectedConversationID: String?
+    @Published var searchQuery = ""
+    @Published var workspace: WorkspaceDestination = .workbench
+    @Published var memoryDrawerOpen = false
+    @Published var memoryDrawerTab: MemoryDrawerTab = .review
+    @Published var modalMessage: String?
     var onChange: (() -> Void)?
 
     init(bridge: NativeBridge) {

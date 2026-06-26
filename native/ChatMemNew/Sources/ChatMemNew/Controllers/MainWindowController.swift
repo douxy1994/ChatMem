@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 @MainActor
 final class MainWindowController: NSWindowController {
@@ -14,10 +15,12 @@ final class MainWindowController: NSWindowController {
         )
         window.title = "ChatMemNew"
         window.minSize = NSSize(width: 1040, height: 680)
+        window.setFrame(NSRect(x: 120, y: 120, width: 1280, height: 840), display: false)
+        window.isRestorable = false
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unifiedCompact
         super.init(window: window)
-        window.contentViewController = RootViewController(store: store)
+        window.contentViewController = NSHostingController(rootView: ChatMemRootSwiftUIView(store: store))
         store.telemetry.lifecycle("Main window created")
     }
 
