@@ -19,9 +19,9 @@ struct ChatMemWorkspaceSwiftUIView: View {
                     case .settings:
                         settings
                     case .favorites:
-                        listWorkspace("Favorites", "Pinned conversations for fast recovery.", store.favorites)
+                        listWorkspace("收藏", "固定的重要对话，便于快速恢复工作。", store.favorites)
                     case .trash:
-                        listWorkspace("Trash", "Review low-signal or deleted conversations before permanent removal.", store.trashed)
+                        listWorkspace("回收站", "在永久删除前复核低信号或已移除的对话。", store.trashed)
                     case .help:
                         help
                     case .about:
@@ -60,35 +60,69 @@ struct ChatMemWorkspaceSwiftUIView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Continue Work")
+                    Text("继续工作")
                         .font(.system(size: 28, weight: .bold))
-                    Text("Pick up the latest progress, commands, and next steps.")
+                    Text("把最近进度、恢复命令、项目记忆和下一步集中在一个工作台里。")
                         .foregroundStyle(SwiftUITheme.secondaryText)
                 }
                 Spacer()
-                Button("Open Memory") { store.toggleMemoryDrawer(tab: .review) }
+                Button("打开记忆视图") { store.toggleMemoryDrawer(tab: .review) }
             }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                metricCard("Indexed history", "\(store.snapshot.repoHealth.indexedConversations)", "local conversations")
-                metricCard("Pending review", "\(store.snapshot.memoryCandidates.count)", "candidate rules")
-                metricCard("Project rules", "\(store.snapshot.approvedMemories.count)", "approved memories")
-                metricCard("Wiki pages", "\(store.snapshot.wikiPages.count)", "readable projections")
-            }
-            panel("Recent Tasks") {
-                ForEach(store.filteredConversations.prefix(5)) { conversation in
-                    Button { store.selectConversation(conversation.id) } label: {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(conversation.title).font(.system(size: 13, weight: .semibold))
-                                Text(conversation.projectDirectory).font(.system(size: 11)).foregroundStyle(SwiftUITheme.secondaryText)
-                            }
-                            Spacer()
-                            Text(conversation.updatedAt).font(.system(size: 11)).foregroundStyle(SwiftUITheme.mutedText)
-                        }
+
+            if let detail = store.selectedConversation {
+                VStack(alignment: .leading, spacing: 12) {
+                    sectionHeader("01", "可恢复进度", detail.summary.sourceAgent.label)
+                    Text(detail.summary.title)
+                        .font(.system(size: 18, weight: .bold))
+                    Text(detail.summary.projectDirectory)
+                        .font(.system(size: 12))
+                        .foregroundStyle(SwiftUITheme.secondaryText)
+                    Text(detail.continuationPrompt)
+                        .font(.system(size: 12))
+                        .foregroundStyle(SwiftUITheme.secondaryText)
+                        .lineLimit(3)
+                    HStack {
+                        primaryButton("恢复命令", "terminal") { copy(detail.summary.resumeCommand) }
+                        secondaryButton("查看对话", "text.bubble") { store.openWorkspace(.conversation) }
+                        secondaryButton("本地历史", "clock.arrow.circlepath") { store.openWorkspace(.localHistory) }
+                        secondaryButton("创建交接", "arrow.left.arrow.right") { store.showQueuedAction("创建交接包") }
                     }
-                    .buttonStyle(.plain)
-                    Divider()
                 }
+                .chatMemCard()
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                metricCard("本地历史", "\(store.snapshot.repoHealth.indexedConversations)", "已索引对话")
+                metricCard("待确认", "\(store.snapshot.memoryCandidates.count)", "候选规则")
+                metricCard("项目规则", "\(store.snapshot.approvedMemories.count)", "已批准记忆")
+                metricCard("Wiki", "\(store.snapshot.wikiPages.count)", "可读投影")
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                panel("最近任务") {
+                    ForEach(store.filteredConversations.prefix(5)) { conversation in
+                        Button { store.selectConversation(conversation.id) } label: {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(conversation.title).font(.system(size: 13, weight: .semibold))
+                                    Text(conversation.projectDirectory).font(.system(size: 11)).foregroundStyle(SwiftUITheme.secondaryText)
+                                }
+                                Spacer()
+                                Text(conversation.updatedAt).font(.system(size: 11)).foregroundStyle(SwiftUITheme.mutedText)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Divider()
+                    }
+                }
+                panel("待处理") {
+                    Text("\(store.snapshot.memoryCandidates.count) 条候选规则需要审批")
+                    Text("\(store.snapshot.handoffs.count) 个交接包等待复核")
+                    Text(store.snapshot.repoHealth.aliasWarnings.first ?? "路径别名状态正常")
+                        .foregroundStyle(SwiftUITheme.secondaryText)
+                    Button("进入待确认") { store.toggleMemoryDrawer(tab: .review) }
+                }
+                .frame(width: 300)
             }
         }
     }
@@ -109,34 +143,34 @@ struct ChatMemWorkspaceSwiftUIView: View {
             }
             Spacer()
             HStack(spacing: 8) {
-                primaryButton("Migrate", "arrow.left.arrow.right") { store.showQueuedAction("Migration") }
-                secondaryButton("Path", "doc.on.doc") { copy(detail.summary.storagePath) }
-                secondaryButton("Resume", "terminal") { copy(detail.summary.resumeCommand) }
-                secondaryButton("Prompt", "sparkles") { copy(detail.continuationPrompt) }
-                secondaryButton("History", "clock.arrow.circlepath") { store.openWorkspace(.localHistory) }
-                secondaryButton("Memory", "tray.full") { store.toggleMemoryDrawer(tab: .review) }
+                primaryButton("迁移", "arrow.left.arrow.right") { store.showQueuedAction("迁移") }
+                secondaryButton("路径", "doc.on.doc") { copy(detail.summary.storagePath) }
+                secondaryButton("恢复", "terminal") { copy(detail.summary.resumeCommand) }
+                secondaryButton("续接", "sparkles") { copy(detail.continuationPrompt) }
+                secondaryButton("历史", "clock.arrow.circlepath") { store.openWorkspace(.localHistory) }
+                secondaryButton("记忆", "tray.full") { store.toggleMemoryDrawer(tab: .review) }
             }
         }
     }
 
     private func metaStrip(_ detail: ConversationDetail) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            metaRow("File Location", detail.summary.storagePath)
-            metaRow("Resume Command", detail.summary.resumeCommand)
-            metaRow("Continuation Prompt", detail.continuationPrompt)
+            metaRow("文件位置", detail.summary.storagePath)
+            metaRow("恢复命令", detail.summary.resumeCommand)
+            metaRow("续接提示词", detail.continuationPrompt)
         }
         .chatMemCard(padding: 12)
     }
 
     private var memorySummary: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("05", "Project Memory Drafts", store.selectedConversation?.summary.projectDirectory ?? "No project path detected.")
+            sectionHeader("05", "项目记忆沉淀", store.selectedConversation?.summary.projectDirectory ?? "暂未识别项目路径")
             HStack(spacing: 10) {
-                miniStat("\(store.snapshot.approvedMemories.count)", "rules")
-                miniStat("\(store.snapshot.memoryCandidates.count)", "pending")
+                miniStat("\(store.snapshot.approvedMemories.count)", "规则")
+                miniStat("\(store.snapshot.memoryCandidates.count)", "待确认")
                 miniStat("\(store.snapshot.wikiPages.count)", "Wiki")
             }
-            Button("Open Memory View") { store.toggleMemoryDrawer(tab: store.snapshot.memoryCandidates.isEmpty ? .rules : .review) }
+            Button("打开项目记忆视图") { store.toggleMemoryDrawer(tab: store.snapshot.memoryCandidates.isEmpty ? .rules : .review) }
                 .buttonStyle(.bordered)
         }
         .chatMemCard()
@@ -144,7 +178,7 @@ struct ChatMemWorkspaceSwiftUIView: View {
 
     private func transcript(_ detail: ConversationDetail) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Conversation")
+            Text("对话")
                 .font(.system(size: 17, weight: .bold))
             ForEach(detail.messages) { message in
                 VStack(alignment: .leading, spacing: 8) {
@@ -154,7 +188,7 @@ struct ChatMemWorkspaceSwiftUIView: View {
                     Text(message.content)
                         .font(.system(size: 13))
                     ForEach(message.toolCalls) { tool in
-                        Text("Tool: \(tool.name) · \(tool.status) · \(tool.output)")
+                        Text("工具: \(tool.name) · \(tool.status) · \(tool.output)")
                             .font(.system(size: 11))
                             .foregroundStyle(SwiftUITheme.secondaryText)
                     }
@@ -166,12 +200,12 @@ struct ChatMemWorkspaceSwiftUIView: View {
 
     private func recoveryRail(_ detail: ConversationDetail) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            panel("Recoverable Progress") {
+            panel("可恢复进度") {
                 Text(detail.summary.title).font(.system(size: 13, weight: .semibold))
                 Text(detail.summary.resumeCommand).font(.system(size: 11, design: .monospaced)).foregroundStyle(SwiftUITheme.secondaryText)
-                Button("Create Checkpoint") { store.showQueuedAction("Create checkpoint") }
+                Button("创建检查点") { store.showQueuedAction("创建检查点") }
             }
-            panel("File Changes") {
+            panel("文件变更") {
                 ForEach(detail.fileChanges) { change in
                     Text("\(change.changeType): \(change.path)")
                         .font(.system(size: 11))
@@ -184,21 +218,21 @@ struct ChatMemWorkspaceSwiftUIView: View {
 
     private var localHistory: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Local History").font(.system(size: 26, weight: .bold))
-            Text("Open deeper records only when source-backed context is needed.")
+            Text("本地历史").font(.system(size: 26, weight: .bold))
+            Text("需要证据链时，再下钻到完整历史、路径别名和检索状态。")
                 .foregroundStyle(SwiftUITheme.secondaryText)
-            panel("Project Index Status") {
-                Text("Indexed conversations: \(store.snapshot.repoHealth.indexedConversations)")
-                Text("Pending candidates: \(store.snapshot.repoHealth.pendingCandidates)")
-                Text("Bootstrap ready: \(store.snapshot.repoHealth.bootstrapReady ? "yes" : "no")")
+            panel("项目索引状态") {
+                Text("已索引对话：\(store.snapshot.repoHealth.indexedConversations)")
+                Text("待确认候选：\(store.snapshot.repoHealth.pendingCandidates)")
+                Text("启动上下文就绪：\(store.snapshot.repoHealth.bootstrapReady ? "是" : "否")")
                 ForEach(store.snapshot.repoHealth.aliasWarnings, id: \.self) { warning in
                     Text(warning).foregroundStyle(SwiftUITheme.secondaryText)
                 }
                 HStack {
-                    primaryButton("Scan", "arrow.clockwise") { store.showQueuedAction("Repo scan") }
-                    secondaryButton("Import", "tray.and.arrow.down") { store.showQueuedAction("Import all local history") }
-                    secondaryButton("Merge Alias", "link") { store.showQueuedAction("Alias merge") }
-                    secondaryButton("Recall", "magnifyingglass") { store.showQueuedAction("History recall") }
+                    primaryButton("扫描", "arrow.clockwise") { store.showQueuedAction("仓库扫描") }
+                    secondaryButton("导入", "tray.and.arrow.down") { store.showQueuedAction("导入全部本地历史") }
+                    secondaryButton("合并别名", "link") { store.showQueuedAction("合并路径别名") }
+                    secondaryButton("召回", "magnifyingglass") { store.showQueuedAction("历史召回") }
                 }
             }
         }
@@ -206,29 +240,84 @@ struct ChatMemWorkspaceSwiftUIView: View {
 
     private var settings: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Settings").font(.system(size: 26, weight: .bold))
-            settingsSection("General", ["Language: English / 中文", "Typeface: System, PingFang SC, SF Mono", "Auto-save recovery checkpoints: enabled"])
-            settingsSection("Updates and diagnostics", ["Check updates", "Run upgrade self-check", "Telemetry: com.chatmem.native"])
-            settingsSection("Agent integration", ["Install all", "Repair per-agent guidance", "MCP status"])
-            settingsSection("Sync", ["WebDAV verification", "OneDrive/local folder sync", "Auto backup interval"])
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("设置").font(.system(size: 26, weight: .bold))
+                    Text("尽量还原旧版设置页的信息分组。当前按钮保留 UI 入口，真实安装、同步和更新逻辑待桥接。")
+                        .foregroundStyle(SwiftUITheme.secondaryText)
+                }
+                Spacer()
+                Button("返回工作台") { store.openWorkspace(.workbench) }
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                settingsPanel("通用", "设置界面语言、字体和恢复点行为。") {
+                    settingRow("语言", value: "简体中文")
+                    settingRow("字体", value: "系统默认 / 苹方 / SF Mono")
+                    settingToggle("自动保留恢复点", enabled: true)
+                    settingToggle("启动时自动检查更新", enabled: true)
+                }
+
+                settingsPanel("Agent 集成", "安装 MCP 与各 Agent 的原生引导入口。") {
+                    settingRow("Claude", value: "MCP + 引导入口")
+                    settingRow("Codex", value: "MCP + AGENTS.md 指令")
+                    settingRow("Hermes / ZCode / OpenCode", value: "待检测")
+                    HStack {
+                        primaryButton("一键安装到全部", "square.and.arrow.down") { store.showQueuedAction("一键安装 Agent 集成") }
+                        secondaryButton("重新检测", "arrow.clockwise") { store.showQueuedAction("重新检测 Agent 集成") }
+                    }
+                }
+
+                settingsPanel("同步", "WebDAV、OneDrive、本地同步文件夹。") {
+                    settingRow("同步方式", value: "OneDrive / WebDAV / 本地文件夹")
+                    settingRow("远程路径", value: "ChatMem/backups")
+                    settingRow("凭据", value: "系统钥匙串")
+                    HStack {
+                        primaryButton("验证服务器", "checkmark.shield") { store.showQueuedAction("验证同步服务器") }
+                        secondaryButton("立即同步", "arrow.triangle.2.circlepath") { store.showQueuedAction("立即同步") }
+                    }
+                }
+
+                settingsPanel("自动备份", "控制静默备份和间隔。") {
+                    settingToggle("启用自动备份", enabled: true)
+                    settingRow("备份间隔", value: "30 分钟")
+                    settingRow("保留策略", value: "最近 14 天")
+                    secondaryButton("查看备份状态", "externaldrive") { store.showQueuedAction("查看备份状态") }
+                }
+
+                settingsPanel("更新与诊断", "版本更新、升级自检和日志。") {
+                    settingRow("当前版本", value: "v1.3.2 / Native New")
+                    settingRow("Telemetry", value: "com.chatmem.native")
+                    HStack {
+                        primaryButton("检查更新", "arrow.down.circle") { store.showQueuedAction("检查更新") }
+                        secondaryButton("升级自检", "stethoscope") { store.showQueuedAction("升级自检") }
+                    }
+                }
+
+                settingsPanel("危险操作", "保留确认流程，不执行静默破坏。") {
+                    settingRow("回收站保留", value: "14 天")
+                    settingRow("删除远端备份", value: "需要二次确认")
+                    secondaryButton("清空回收站", "trash") { store.showQueuedAction("清空回收站") }
+                }
+            }
         }
     }
 
     private var help: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Help").font(.system(size: 26, weight: .bold))
-            settingsSection("Continue Work", ["Restore the resume command, inspect conversation evidence, or open local history."])
-            settingsSection("Review Memory", ["Approve only durable startup rules. Local history remains searchable without approval."])
-            settingsSection("Agent Integrations", ["Install MCP and per-agent guidance so recall questions route to ChatMem."])
+            Text("帮助").font(.system(size: 26, weight: .bold))
+            settingsSection("继续工作", ["复制恢复命令、查看对话证据，或打开本地历史检索。"])
+            settingsSection("审批记忆", ["只把稳定规则批准为启动规则；普通历史无需审批也能检索。"])
+            settingsSection("Agent 集成", ["安装 MCP 和各 Agent 引导，让“继续/记得吗/迁移”先查 ChatMem。"])
         }
     }
 
     private var about: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("ChatMemNew").font(.system(size: 30, weight: .bold))
-            Text("Native SwiftUI/AppKit parallel build. It does not replace /Applications/ChatMem.app.")
+            Text("SwiftUI/AppKit 并行原生版本。它不会替换 /Applications/ChatMem.app。")
                 .foregroundStyle(SwiftUITheme.secondaryText)
-            settingsSection("Build Status", ["UI parity pass using SwiftUI, sample data, and queued backend bridge states."])
+            settingsSection("构建状态", ["SwiftUI UI 还原中；当前使用 sample data 和待桥接状态。"])
         }
     }
 
@@ -245,7 +334,7 @@ struct ChatMemWorkspaceSwiftUIView: View {
                             .foregroundStyle(SwiftUITheme.secondaryText)
                     }
                     Spacer()
-                    Button("Open") { store.selectConversation(conversation.id) }
+                    Button("打开") { store.selectConversation(conversation.id) }
                 }
                 .chatMemCard()
             }
@@ -276,6 +365,47 @@ struct ChatMemWorkspaceSwiftUIView: View {
                 Text(row).foregroundStyle(SwiftUITheme.secondaryText)
             }
         }
+    }
+
+    private func settingsPanel<Content: View>(_ title: String, _ helper: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 16, weight: .bold))
+                Text(helper).font(.system(size: 12)).foregroundStyle(SwiftUITheme.secondaryText)
+            }
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .chatMemCard()
+    }
+
+    private func settingRow(_ title: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+            Spacer()
+            Text(value)
+                .font(.system(size: 12))
+                .foregroundStyle(SwiftUITheme.secondaryText)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func settingToggle(_ title: String, enabled: Bool) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+            Spacer()
+            Text(enabled ? "已开启" : "已关闭")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(enabled ? SwiftUITheme.accent : SwiftUITheme.mutedText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(enabled ? SwiftUITheme.selected : SwiftUITheme.softStrong)
+                .clipShape(Capsule())
+        }
+        .padding(.vertical, 2)
     }
 
     private func sectionHeader(_ number: String, _ title: String, _ subtitle: String) -> some View {

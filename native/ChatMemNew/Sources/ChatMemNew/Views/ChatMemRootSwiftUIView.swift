@@ -67,7 +67,7 @@ struct ChatMemRootSwiftUIView: View {
             HStack {
                 Spacer()
                 Button { store.toggleMemoryDrawer(tab: .review) } label: {
-                    Label("Memory", systemImage: "tray.full")
+                    Label("记忆", systemImage: "tray.full")
                 }
                 Button { store.openWorkspace(.help) } label: {
                     Image(systemName: "questionmark.circle")
@@ -101,7 +101,7 @@ private struct QueuedActionSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
-                Button("OK", action: onClose)
+                Button("知道了", action: onClose)
                     .keyboardShortcut(.defaultAction)
             }
         }

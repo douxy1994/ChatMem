@@ -20,7 +20,7 @@ final class AppStore: ObservableObject {
         telemetry.bridge("Loading sample snapshot")
         self.snapshot = bridge.loadSnapshot()
         selectedConversationID = snapshot.conversations.first?.id
-        workspace = .conversation
+        workspace = .workbench
     }
 
     var filteredConversations: [ConversationSummary] {
@@ -89,7 +89,7 @@ final class AppStore: ObservableObject {
     }
 
     func showQueuedAction(_ title: String) {
-        modalMessage = "\(title) is queued for backend bridge integration. The native UI surface is present and intentionally not wired to destructive behavior yet."
+        modalMessage = "\(title) 已进入后端桥接待办。当前 native UI 已保留入口，但还没有连接真实数据写入或破坏性操作。"
         telemetry.bridge("Queued action \(title)")
         notify()
     }

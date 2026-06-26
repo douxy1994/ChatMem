@@ -7,9 +7,9 @@ struct ChatMemMemoryDrawerSwiftUIView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Startup Rules")
+                    Text("启动规则管理")
                         .font(.system(size: 22, weight: .bold))
-                    Text("Stable rules, wiki, and continuation state.")
+                    Text("候选规则、已批准规则、Wiki 和继续工作状态。")
                         .font(.system(size: 12))
                         .foregroundStyle(SwiftUITheme.secondaryText)
                 }
@@ -25,7 +25,7 @@ struct ChatMemMemoryDrawerSwiftUIView: View {
                 set: { store.setMemoryDrawerTab($0) }
             )) {
                 ForEach(MemoryDrawerTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+                    Text(tabLabel(tab)).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
@@ -49,22 +49,22 @@ struct ChatMemMemoryDrawerSwiftUIView: View {
         switch store.memoryDrawerTab {
         case .review:
             ForEach(store.snapshot.memoryCandidates) { candidate in
-                drawerCard(candidate.title, "\(candidate.reason)\n\(candidate.value)", action: "Approve queued")
+                drawerCard(candidate.title, "\(candidate.reason)\n\(candidate.value)", action: "审批待桥接")
             }
         case .rules:
             ForEach(store.snapshot.approvedMemories) { memory in
-                drawerCard(memory.title, "\(memory.freshness): \(memory.usageHint)", action: "Reverify queued")
+                drawerCard(memory.title, "\(memory.freshness): \(memory.usageHint)", action: "重新核验待桥接")
             }
         case .wiki:
             ForEach(store.snapshot.wikiPages) { page in
-                drawerCard(page.title, page.preview, action: "Rebuild queued")
+                drawerCard(page.title, page.preview, action: "重建待桥接")
             }
         case .continuation:
             ForEach(store.snapshot.checkpoints) { checkpoint in
-                drawerCard(checkpoint.summary, checkpoint.resumeCommand, action: "Promote queued")
+                drawerCard(checkpoint.summary, checkpoint.resumeCommand, action: "转交待桥接")
             }
             ForEach(store.snapshot.handoffs) { handoff in
-                drawerCard(handoff.goal, "\(handoff.fromAgent.label) → \(handoff.toAgent.label)\n\(handoff.nextItem)", action: "Mark consumed queued")
+                drawerCard(handoff.goal, "\(handoff.fromAgent.label) → \(handoff.toAgent.label)\n\(handoff.nextItem)", action: "标记接收待桥接")
             }
         }
     }
@@ -78,5 +78,14 @@ struct ChatMemMemoryDrawerSwiftUIView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .chatMemCard(padding: 12)
+    }
+
+    private func tabLabel(_ tab: MemoryDrawerTab) -> String {
+        switch tab {
+        case .review: "候选"
+        case .rules: "规则"
+        case .wiki: "Wiki"
+        case .continuation: "继续"
+        }
     }
 }

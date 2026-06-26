@@ -11,7 +11,7 @@ struct ChatMemSidebarSwiftUIView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     controls
                     librarySection(
-                        title: "Projects",
+                        title: "项目",
                         systemImage: "folder",
                         count: store.filteredConversations.count,
                         expanded: $projectsExpanded
@@ -21,7 +21,7 @@ struct ChatMemSidebarSwiftUIView: View {
                         }
                     }
                     librarySection(
-                        title: "Chats",
+                        title: "对话",
                         systemImage: "bubble.left.and.bubble.right",
                         count: store.snapshot.conversations.filter { $0.sourceAgent == store.selectedAgent && !$0.isTrashed }.count,
                         expanded: $chatsExpanded
@@ -45,7 +45,7 @@ struct ChatMemSidebarSwiftUIView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Source", systemImage: "externaldrive")
+                Label("来源", systemImage: "externaldrive")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(SwiftUITheme.secondaryText)
                 Spacer()
@@ -64,7 +64,7 @@ struct ChatMemSidebarSwiftUIView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(SwiftUITheme.mutedText)
-                TextField("Search local history", text: Binding(
+                TextField("搜索本地历史", text: Binding(
                     get: { store.searchQuery },
                     set: { store.setSearch($0) }
                 ))
@@ -77,9 +77,9 @@ struct ChatMemSidebarSwiftUIView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(SwiftUITheme.border))
 
             HStack(spacing: 6) {
-                sidebarTool("square.grid.2x2", "Organize")
-                sidebarTool("checklist", "Bulk")
-                sidebarTool("arrow.down.right.and.arrow.up.left", "Collapse")
+                sidebarTool("square.grid.2x2", "整理")
+                sidebarTool("checklist", "批量")
+                sidebarTool("arrow.down.right.and.arrow.up.left", "折叠")
             }
         }
     }
@@ -150,7 +150,7 @@ struct ChatMemSidebarSwiftUIView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(SwiftUITheme.secondaryText)
                         .lineLimit(1)
-                    Text("\(conversation.messageCount) messages · \(conversation.fileCount) files · \(conversation.updatedAt)")
+                    Text("\(conversation.messageCount) 条消息 · \(conversation.fileCount) 个文件 · \(conversation.updatedAt)")
                         .font(.system(size: 10))
                         .foregroundStyle(SwiftUITheme.mutedText)
                         .lineLimit(1)
@@ -168,8 +168,8 @@ struct ChatMemSidebarSwiftUIView: View {
 
     private var utilityNav: some View {
         HStack(spacing: 6) {
-            utilityButton("Favorites", "star", store.favorites.count) { store.openWorkspace(.favorites) }
-            utilityButton("Trash", "trash", store.trashed.count) { store.openWorkspace(.trash) }
+            utilityButton("收藏", "star", store.favorites.count) { store.openWorkspace(.favorites) }
+            utilityButton("回收站", "trash", store.trashed.count) { store.openWorkspace(.trash) }
             Spacer()
             Text("v1.3.2")
                 .font(.system(size: 11, weight: .medium))
