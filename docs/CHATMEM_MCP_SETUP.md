@@ -17,7 +17,7 @@ Open ChatMem and go to:
 Settings -> Agent integration -> Install all
 ```
 
-This installs both surfaces for Claude Code, Codex, Gemini CLI, Google Antigravity CLI, OpenCode, Hermes, and ZCode when their user-level config locations are available. The installer writes backups such as `.bak-YYYYMMDD-HHMMSS` before changing existing config files.
+This installs both surfaces for Claude Code, Codex, Gemini CLI, Google Antigravity CLI, OpenCode, Hermes, ZCode, and Kimi Code when their user-level config locations are available. The installer writes backups such as `.bak-YYYYMMDD-HHMMSS` before changing existing config files.
 
 Installed app builds use:
 
@@ -34,6 +34,7 @@ The installer now treats "installed" as more than "MCP exists". Every supported 
 - Gemini: `C:\Users\Liang\.gemini\GEMINI.md`
 - Google Antigravity CLI: `C:\Users\Liang\.gemini\antigravity-cli\AGENTS.md` plus `C:\Users\Liang\.gemini\antigravity-cli\skills\chatmem\SKILL.md`
 - OpenCode: `C:\Users\Liang\.config\opencode\AGENTS.md` plus `C:\Users\Liang\.config\opencode\skills\chatmem\SKILL.md`
+- Kimi Code: `C:\Users\Liang\.kimi-code\AGENTS.md` plus `C:\Users\Liang\.kimi-code\skills\chatmem\SKILL.md`; MCP goes to `C:\Users\Liang\.kimi-code\mcp.json` under `mcpServers.chatmem`. When `KIMI_CODE_HOME` is set, all three paths move to that data root.
 
 Those rule files tell the agent to check ChatMem before asking the user to redescribe a topic that may already exist in local history.
 
@@ -75,13 +76,14 @@ The repo-level MCP config lives at:
 
 It starts ChatMem with:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\mcp\run-chatmem-mcp.ps1
+```bash
+node ./mcp/run-chatmem-mcp.mjs
 ```
 
-The launcher lives at:
+The launchers live at:
 
-- `D:\VSP\agentswap-gui\mcp\run-chatmem-mcp.ps1`
+- `mcp/run-chatmem-mcp.mjs`: cross-platform Node launcher used by `.mcp.json` (macOS, Linux, Windows)
+- `mcp/run-chatmem-mcp.ps1`: legacy Windows PowerShell launcher with the same binary-resolution logic
 
 Environment overrides:
 

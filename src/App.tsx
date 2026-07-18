@@ -179,7 +179,8 @@ type AgentType =
   | "antigravity"
   | "opencode"
   | "zcode"
-  | "hermes";
+  | "hermes"
+  | "kimi";
 type TopPage = "continue" | "review" | "history" | "help";
 type HistoryView = "conversations" | "recovery" | "transfers" | "outputs";
 type MemoryDrawerTab = "inbox" | "approved" | "wiki" | "continuation";
@@ -411,6 +412,7 @@ const AGENT_OPTIONS: { value: AgentType; label: string }[] = [
   { value: "opencode", label: "OpenCode" },
   { value: "zcode", label: "ZCode" },
   { value: "hermes", label: "Hermes" },
+  { value: "kimi", label: "Kimi Code" },
 ];
 const ZCODE_CLI_LABELS: Record<string, string> = {
   claude: "Claude",
@@ -482,6 +484,18 @@ const TARGET_PROFILE_OPTIONS: Record<string, HandoffTargetProfileOption[]> = {
       description: "Highlight evidence, risks, and verification notes for an OpenCode session.",
     },
   ],
+  kimi: [
+    {
+      value: "kimi_execution",
+      label: "Kimi Code Execution",
+      description: "Emphasize concrete next steps, commands, and file-level action items for Kimi Code.",
+    },
+    {
+      value: "kimi_review",
+      label: "Kimi Code Review",
+      description: "Highlight changed files, evidence, and follow-up checks for a Kimi Code session.",
+    },
+  ],
 };
 
 function getAgentHeading(agent: AgentType, locale: Locale) {
@@ -504,6 +518,8 @@ function getAgentHeading(agent: AgentType, locale: Locale) {
       return "ZCODE \u5bf9\u8bdd";
     case "hermes":
       return "HERMES \u5bf9\u8bdd";
+    case "kimi":
+      return "KIMI CODE 对话";
     default:
       return "对话";
   }
@@ -517,6 +533,7 @@ const AGENT_LABELS: Record<string, string> = {
   opencode: "OpenCode",
   zcode: "ZCode",
   hermes: "Hermes",
+  kimi: "Kimi Code",
   "zcode-claude": "ZCode Claude",
   "zcode-codex": "ZCode Codex",
   "zcode-gemini": "ZCode Gemini",
@@ -557,6 +574,8 @@ function getAgentConfigLocation(agent: AgentType) {
       return "~/.zcode/v2/acp-config";
     case "hermes":
       return "~/.hermes";
+    case "kimi":
+      return "~/.kimi-code/sessions";
     default:
       return "--";
   }
@@ -776,7 +795,8 @@ function getTopLevelAgent(sourceAgent: string): AgentType {
     normalizedAgent === "gemini" ||
     normalizedAgent === "antigravity" ||
     normalizedAgent === "opencode" ||
-    normalizedAgent === "hermes"
+    normalizedAgent === "hermes" ||
+    normalizedAgent === "kimi"
   ) {
     return normalizedAgent;
   }
@@ -3802,16 +3822,16 @@ function App() {
       {
         label: locale === "en" ? "Version" : "版本号",
         value: `v${packageInfo.version}`,
-        ok: packageInfo.version === "1.3.2",
+        ok: packageInfo.version === "1.3.3",
       },
       {
         label: locale === "en" ? "Release notes" : "发布说明",
-        value: "docs/releases/v1.3.2.md",
+        value: "docs/releases/v1.3.3.md",
         ok: true,
       },
       {
         label: locale === "en" ? "Windows parity guide" : "Windows 同步文档",
-        value: "docs/windows-v1.3.2-antigravity-implementation.md",
+        value: "docs/windows-v1.3.3-kimi-implementation.md",
         ok: true,
       },
       {
@@ -5347,7 +5367,7 @@ function App() {
           <article className="about-detail-card">
             <WindowButtonIcon type="migrate" />
             <span>{locale === "en" ? "Agent scope" : "Agent 范围"}</span>
-            <strong>Claude / Codex / Gemini / Antigravity / OpenCode / ZCode</strong>
+            <strong>Claude / Codex / Gemini / Antigravity / OpenCode / ZCode / Kimi Code</strong>
           </article>
           <article className="about-detail-card">
             <WindowButtonIcon type="shield" />

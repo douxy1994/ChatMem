@@ -7,7 +7,8 @@ type AgentType =
   | "antigravity"
   | "opencode"
   | "zcode"
-  | "hermes";
+  | "hermes"
+  | "kimi";
 type MigrateMode = "copy" | "cut";
 type MigrateKind = "full" | "brief";
 
@@ -26,6 +27,7 @@ const agents: { value: AgentType; label: string }[] = [
   { value: "antigravity", label: "Google Antigravity" },
   { value: "opencode", label: "OpenCode" },
   { value: "zcode", label: "ZCode" },
+  { value: "kimi", label: "Kimi Code" },
 ];
 
 function firstTargetFor(sourceAgent: AgentType) {
