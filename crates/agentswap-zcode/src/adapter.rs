@@ -530,6 +530,9 @@ impl AgentAdapter for ZCodeAdapter {
             AgentKind::Hermes => {
                 anyhow::bail!("Hermes write is not supported (read-only adapter)")
             }
+            AgentKind::KimiCode => {
+                anyhow::bail!("Kimi Code write is not supported (read-only adapter)")
+            }
             AgentKind::Claude | AgentKind::ZCode | AgentKind::ZCodeClaude => self
                 .claude_adapter()
                 .write_conversation(conv)

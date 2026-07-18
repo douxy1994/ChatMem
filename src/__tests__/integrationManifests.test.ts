@@ -19,9 +19,9 @@ const appStyles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8")
 describe("chatmem integration manifests", () => {
   it("defines a local MCP server entry for chatmem", () => {
     expect(mcpConfig.mcpServers.chatmem).toBeDefined();
-    expect(mcpConfig.mcpServers.chatmem.command).toBe("powershell");
-    expect(mcpConfig.mcpServers.chatmem.args.join(" ")).toContain("run-chatmem-mcp.ps1");
-    expect(mcpConfig.mcpServers.chatmem.args.join(" ")).toContain("./mcp/run-chatmem-mcp.ps1");
+    expect(mcpConfig.mcpServers.chatmem.command).toBe("node");
+    expect(mcpConfig.mcpServers.chatmem.args.join(" ")).toContain("run-chatmem-mcp.mjs");
+    expect(mcpConfig.mcpServers.chatmem.args.join(" ")).toContain("./mcp/run-chatmem-mcp.mjs");
   });
 
   it("keeps ChatMem as MCP plus skill without local plugin wrappers", () => {

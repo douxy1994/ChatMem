@@ -44,6 +44,7 @@ use agentswap_core::adapter::AgentAdapter;
 use agentswap_core::types::{AgentKind, Conversation, ConversationSummary, Message};
 use agentswap_gemini::{AntigravityAdapter, GeminiAdapter};
 use agentswap_hermes::adapter::HermesAdapter;
+use agentswap_kimi::KimiCodeAdapter;
 use agentswap_opencode::OpenCodeAdapter;
 use agentswap_zcode::{
     ZCodeAdapter, ZCodeClaudeAdapter, ZCodeCodexAdapter, ZCodeGeminiAdapter, ZCodeOpenCodeAdapter,
@@ -58,6 +59,7 @@ const AGENT_KEYS: &[&str] = &[
     "opencode",
     "zcode",
     "hermes",
+    "kimi",
 ];
 const MENU_OPEN_SETTINGS: &str = "open_settings";
 
@@ -357,6 +359,7 @@ fn get_adapter(agent: &str) -> Result<Box<dyn AgentAdapter>, String> {
         "zcode-gemini" => Ok(Box::new(ZCodeGeminiAdapter::new())),
         "zcode-opencode" => Ok(Box::new(ZCodeOpenCodeAdapter::new())),
         "hermes" => Ok(Box::new(HermesAdapter::new())),
+        "kimi" => Ok(Box::new(KimiCodeAdapter::new())),
         _ => Err(format!("Unknown agent: {}", agent)),
     }
 }
@@ -374,6 +377,7 @@ fn agent_key(agent: &AgentKind) -> &'static str {
         AgentKind::ZCodeOpenCode => "zcode-opencode",
         AgentKind::Antigravity => "antigravity",
         AgentKind::Hermes => "hermes",
+        AgentKind::KimiCode => "kimi",
     }
 }
 
@@ -386,6 +390,7 @@ fn agent_display_label(agent: &str) -> &'static str {
         "opencode" => "OpenCode",
         "zcode" => "ZCode",
         "hermes" => "Hermes",
+        "kimi" => "Kimi Code",
         _ => "Unknown",
     }
 }

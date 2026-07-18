@@ -8,6 +8,7 @@ dist-portable/
 output/
 src-tauri/target/
 target/
+native/ChatMemNew/.build/
 .worktrees/
 .superpowers/
 __pycache__/

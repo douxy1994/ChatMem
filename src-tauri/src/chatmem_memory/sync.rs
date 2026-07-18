@@ -2,6 +2,7 @@ use agentswap_claude::ClaudeAdapter;
 use agentswap_codex::CodexAdapter;
 use agentswap_core::{adapter::AgentAdapter, types::Conversation};
 use agentswap_gemini::{AntigravityAdapter, GeminiAdapter};
+use agentswap_kimi::{adapter::kimi_code_home, KimiCodeAdapter};
 use agentswap_opencode::OpenCodeAdapter;
 use agentswap_zcode::{
     ZCodeAdapter, ZCodeClaudeAdapter, ZCodeCodexAdapter, ZCodeGeminiAdapter, ZCodeOpenCodeAdapter,
@@ -27,6 +28,7 @@ const LOCAL_HISTORY_AGENTS: &[&str] = &[
     "antigravity",
     "opencode",
     "zcode",
+    "kimi",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +51,7 @@ pub fn build_resume_command(agent: &str, id: &str) -> Option<String> {
         "gemini" => Some(format!("gemini --resume {}", id)),
         "antigravity" => Some(format!("antigravity --resume {}", id)),
         "opencode" => Some(format!("opencode --session {}", id)),
+        "kimi" => Some(format!("kimi --session {}", id)),
         "zcode" | "zcode-claude" | "zcode-codex" | "zcode-gemini" | "zcode-opencode" => None,
         _ => None,
     }
@@ -103,6 +106,18 @@ pub fn resolve_antigravity_storage_path(id: &str) -> Option<String> {
     }
 }
 
+pub fn resolve_kimi_storage_path(id: &str) -> Option<String> {
+    let sessions_dir = kimi_code_home()?.join("sessions");
+    let workspaces = std::fs::read_dir(&sessions_dir).ok()?;
+    for workspace in workspaces.flatten() {
+        let candidate = workspace.path().join(id);
+        if candidate.is_dir() {
+            return Some(candidate.display().to_string());
+        }
+    }
+    None
+}
+
 pub fn resolve_zcode_claude_storage_path(id: &str) -> Option<String> {
     ZCodeClaudeAdapter::new().storage_path_for_id(id)
 }
@@ -121,6 +136,7 @@ pub fn resolve_storage_path(agent: &str, id: &str) -> Option<String> {
         "codex" => resolve_codex_storage_path(id),
 
         "antigravity" => resolve_antigravity_storage_path(id),
+        "kimi" => resolve_kimi_storage_path(id),
         "opencode" => resolve_opencode_storage_path(id),
         "zcode" => resolve_zcode_storage_path(id),
         "zcode-claude" => resolve_zcode_claude_storage_path(id),
@@ -142,6 +158,7 @@ fn get_adapter(agent: &str) -> Option<Box<dyn AgentAdapter>> {
         "zcode-codex" => Some(Box::new(ZCodeCodexAdapter::new())),
         "zcode-gemini" => Some(Box::new(ZCodeGeminiAdapter::new())),
         "zcode-opencode" => Some(Box::new(ZCodeOpenCodeAdapter::new())),
+        "kimi" => Some(Box::new(KimiCodeAdapter::new())),
         _ => None,
     }
 }
@@ -759,6 +776,7 @@ mod tests {
                 AgentKind::ZCodeCodex => "ZCode Codex",
                 AgentKind::ZCodeGemini => "ZCode Gemini",
                 AgentKind::ZCodeOpenCode => "ZCode OpenCode",
+                AgentKind::KimiCode => "Kimi Code",
             }
         }
 

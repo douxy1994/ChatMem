@@ -28,6 +28,7 @@ enum IntegrationAgent {
     OpenCode,
     Hermes,
     ZCode,
+    KimiCode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,7 +59,7 @@ pub struct AgentIntegrationOperationResult {
 }
 
 impl IntegrationAgent {
-    fn all() -> [Self; 7] {
+    fn all() -> [Self; 8] {
         [
             Self::Claude,
             Self::Codex,
@@ -67,6 +68,7 @@ impl IntegrationAgent {
             Self::OpenCode,
             Self::Hermes,
             Self::ZCode,
+            Self::KimiCode,
         ]
     }
 
@@ -79,6 +81,7 @@ impl IntegrationAgent {
             "opencode" => Some(Self::OpenCode),
             "hermes" => Some(Self::Hermes),
             "zcode" => Some(Self::ZCode),
+            "kimi" => Some(Self::KimiCode),
             _ => None,
         }
     }
@@ -92,6 +95,7 @@ impl IntegrationAgent {
             Self::OpenCode => "opencode",
             Self::Hermes => "hermes",
             Self::ZCode => "zcode",
+            Self::KimiCode => "kimi",
         }
     }
 
@@ -104,6 +108,7 @@ impl IntegrationAgent {
             Self::OpenCode => "OpenCode",
             Self::Hermes => "Hermes",
             Self::ZCode => "ZCode",
+            Self::KimiCode => "Kimi Code",
         }
     }
 
@@ -133,6 +138,7 @@ impl IntegrationAgent {
                 }
             }
             Self::ZCode => paths.home_dir.join(".zcode").join("v2").join("config.json"),
+            Self::KimiCode => kimi_home_dir(paths).join("mcp.json"),
         }
     }
 
@@ -190,6 +196,10 @@ impl IntegrationAgent {
                 .join("skills")
                 .join("chatmem")
                 .join("SKILL.md"),
+            Self::KimiCode => kimi_home_dir(paths)
+                .join("skills")
+                .join("chatmem")
+                .join("SKILL.md"),
         }
     }
 }
@@ -232,6 +242,29 @@ fn antigravity_rules_path(paths: &IntegrationPaths) -> PathBuf {
 
 fn claude_rules_path(paths: &IntegrationPaths) -> PathBuf {
     paths.home_dir.join(".claude").join("CLAUDE.md")
+}
+
+/// Kimi Code data root. Defaults to `~/.kimi-code`; honors the documented
+/// `KIMI_CODE_HOME` relocation variable outside test builds so unit tests
+/// always stay inside their temporary home directory.
+#[cfg(not(test))]
+fn kimi_code_home_override() -> Option<PathBuf> {
+    std::env::var_os("KIMI_CODE_HOME")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+}
+
+#[cfg(test)]
+fn kimi_code_home_override() -> Option<PathBuf> {
+    None
+}
+
+fn kimi_home_dir(paths: &IntegrationPaths) -> PathBuf {
+    kimi_code_home_override().unwrap_or_else(|| paths.home_dir.join(".kimi-code"))
+}
+
+fn kimi_rules_path(paths: &IntegrationPaths) -> PathBuf {
+    kimi_home_dir(paths).join("AGENTS.md")
 }
 
 fn codex_rules_path(paths: &IntegrationPaths) -> PathBuf {
@@ -405,6 +438,14 @@ fn chatmem_gemini_json(paths: &IntegrationPaths) -> Value {
         "args": ["--mcp"],
         "timeout": 30000,
         "trust": true
+    })
+}
+
+fn chatmem_kimi_json(paths: &IntegrationPaths) -> Value {
+    json!({
+        "command": path_to_string(&paths.executable_path),
+        "args": ["--mcp"],
+        "startupTimeoutMs": 30000
     })
 }
 
@@ -863,6 +904,12 @@ fn instructions_installed(agent: IntegrationAgent, paths: &IntegrationPaths) -> 
         }
         IntegrationAgent::Hermes => path.exists(),
         IntegrationAgent::ZCode => path.exists(),
+        IntegrationAgent::KimiCode => {
+            path.exists()
+                && fs::read_to_string(kimi_rules_path(paths))
+                    .map(|content| content.contains(MANAGED_BLOCK_START))
+                    .unwrap_or(false)
+        }
     }
 }
 
@@ -883,6 +930,9 @@ fn mcp_installed(agent: IntegrationAgent, paths: &IntegrationPaths) -> bool {
             .unwrap_or(false),
         IntegrationAgent::ZCode => read_json_object(&path)
             .map(|value| json_has_server(&value, "mcp"))
+            .unwrap_or(false),
+        IntegrationAgent::KimiCode => read_json_object(&path)
+            .map(|value| json_has_server(&value, "mcpServers"))
             .unwrap_or(false),
     }
 }
@@ -937,6 +987,11 @@ fn status_for_agent(agent: IntegrationAgent, paths: &IntegrationPaths) -> AgentI
             IntegrationAgent::ZCode => {
                 details.push("ZCode config.json 中已配置 chatmem MCP 服务器。".to_string());
             }
+            IntegrationAgent::KimiCode => {
+                details.push(
+                    "ChatMem skill 和 Kimi Code 全局 AGENTS.md 规则已安装。".to_string(),
+                );
+            }
         }
     } else {
         match agent {
@@ -965,6 +1020,10 @@ fn status_for_agent(agent: IntegrationAgent, paths: &IntegrationPaths) -> AgentI
             ),
             IntegrationAgent::ZCode => details.push(
                 "ZCode 需要在 config.json 中配置 chatmem MCP 服务器和 skill。"
+                    .to_string(),
+            ),
+            IntegrationAgent::KimiCode => details.push(
+                "Kimi Code 需要同时安装 ChatMem skill 和全局 AGENTS.md 规则；缺任一项都可能不会自动触发。"
                     .to_string(),
             ),
         }
@@ -1009,6 +1068,9 @@ fn install_one(
         IntegrationAgent::OpenCode => install_opencode_config(&config_path, paths)?,
         IntegrationAgent::Hermes => install_hermes_config(&config_path, paths)?,
         IntegrationAgent::ZCode => install_opencode_config(&config_path, paths)?,
+        IntegrationAgent::KimiCode => {
+            install_json_server(&config_path, "mcpServers", chatmem_kimi_json(paths))?
+        }
     };
     backups.extend(config_backup);
 
@@ -1038,6 +1100,11 @@ fn install_one(
         }
         IntegrationAgent::Hermes => install_skill_tree(agent, paths)?,
         IntegrationAgent::ZCode => install_skill_tree(agent, paths)?,
+        IntegrationAgent::KimiCode => {
+            let mut backups = install_skill_tree(agent, paths)?;
+            backups.extend(install_managed_instructions(&kimi_rules_path(paths))?);
+            backups
+        }
     };
     backups.extend(instruction_backups);
 
@@ -1067,6 +1134,7 @@ fn uninstall_one(
         IntegrationAgent::OpenCode => uninstall_opencode_config(&config_path)?,
         IntegrationAgent::Hermes => uninstall_hermes_config(&config_path)?,
         IntegrationAgent::ZCode => uninstall_opencode_config(&config_path)?,
+        IntegrationAgent::KimiCode => uninstall_json_server(&config_path, "mcpServers")?,
     };
     backups.extend(config_backup);
 
@@ -1110,6 +1178,14 @@ fn uninstall_one(
         }
         IntegrationAgent::Hermes => uninstall_skill_tree(agent, paths)?,
         IntegrationAgent::ZCode => uninstall_skill_tree(agent, paths)?,
+        IntegrationAgent::KimiCode => {
+            let mut removed = uninstall_skill_tree(agent, paths)?;
+            if let Some(backup) = uninstall_managed_instructions(&kimi_rules_path(paths))? {
+                backups.push(backup);
+                removed = true;
+            }
+            removed
+        }
     };
 
     let status = status_for_agent(agent, paths);
@@ -1281,6 +1357,66 @@ mod tests {
         assert!(updated["mcpServers"].get("chatmem").is_none());
         assert!(!skill.exists());
         assert!(fs::read_to_string(&rules).unwrap_or_default().is_empty());
+    }
+
+    #[test]
+    fn installs_kimi_code_with_mcp_skill_and_agents_md() {
+        let paths = test_paths("kimi");
+        let agent = selected_agents("kimi").unwrap().remove(0);
+
+        let config = paths.home_dir.join(".kimi-code").join("mcp.json");
+        let skill = paths
+            .home_dir
+            .join(".kimi-code")
+            .join("skills")
+            .join("chatmem")
+            .join("SKILL.md");
+        let rules = paths.home_dir.join(".kimi-code").join("AGENTS.md");
+
+        // An unrelated MCP server already configured by the user must survive.
+        write_json_value(
+            &config,
+            &json!({
+                "mcpServers": {
+                    "filesystem": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]}
+                }
+            }),
+        )
+        .unwrap();
+
+        install_one(agent, &paths).unwrap();
+
+        let kimi = read_json_object(&config).unwrap();
+        assert_eq!(
+            kimi["mcpServers"]["chatmem"]["command"],
+            json!(path_to_string(&paths.executable_path))
+        );
+        assert_eq!(kimi["mcpServers"]["chatmem"]["args"], json!(["--mcp"]));
+        assert_eq!(
+            kimi["mcpServers"]["chatmem"]["startupTimeoutMs"],
+            json!(30000)
+        );
+        assert!(kimi["mcpServers"].get("filesystem").is_some());
+        assert!(skill.exists());
+        assert!(fs::read_to_string(&rules)
+            .unwrap()
+            .contains("read_history_conversation"));
+        assert!(instructions_installed(agent, &paths));
+        assert!(mcp_installed(agent, &paths));
+
+        // Reinstall is idempotent and keeps the unrelated server.
+        install_one(agent, &paths).unwrap();
+        let kimi = read_json_object(&config).unwrap();
+        assert!(kimi["mcpServers"].get("filesystem").is_some());
+
+        uninstall_one(agent, &paths).unwrap();
+        let updated = read_json_object(&config).unwrap();
+        assert!(updated["mcpServers"].get("chatmem").is_none());
+        assert!(updated["mcpServers"].get("filesystem").is_some());
+        assert!(!skill.exists());
+        assert!(fs::read_to_string(&rules).unwrap_or_default().is_empty());
+        assert!(!instructions_installed(agent, &paths));
+        assert!(!mcp_installed(agent, &paths));
     }
 
     #[test]

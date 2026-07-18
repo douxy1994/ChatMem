@@ -27,6 +27,7 @@ const defaultConversationSourceStatuses = [
   { agent: "opencode", label: "OpenCode", available: true },
   { agent: "zcode", label: "ZCode", available: true },
   { agent: "hermes", label: "Hermes", available: true },
+  { agent: "kimi", label: "Kimi Code", available: true },
 ];
 
 vi.mock("@tauri-apps/api/tauri", () => ({
@@ -303,7 +304,7 @@ describe("App", () => {
       if (command === "check_github_release_update") {
         return {
           shouldUpdate: false,
-          version: "1.3.2",
+          version: "1.3.3",
           notes: null,
           publishedAt: "2026-06-22T00:32:03Z",
           assetName: null,
@@ -313,10 +314,10 @@ describe("App", () => {
       if (command === "install_github_release_update") {
         return {
           shouldUpdate: true,
-          version: "1.3.2",
+          version: "1.3.3",
           notes: null,
           publishedAt: "2026-06-22T12:00:00Z",
-          assetName: "ChatMem_1.3.2_x64-setup.exe",
+          assetName: "ChatMem_1.3.3_x64-setup.exe",
         };
       }
 
@@ -610,7 +611,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Control Center" })).toBeTruthy();
   });
 
-  it("renders the 1.3.2 version without an About utility entry", async () => {
+  it("renders the 1.3.3 version without an About utility entry", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -618,7 +619,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect((await screen.findAllByText("v1.3.2")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("v1.3.3")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "About us" })).toBeNull();
   });
 
@@ -1141,6 +1142,7 @@ describe("App", () => {
           { agent: "opencode", label: "OpenCode", available: false },
           { agent: "zcode", label: "ZCode", available: true },
           { agent: "hermes", label: "Hermes", available: true },
+          { agent: "kimi", label: "Kimi Code", available: true },
         ];
       }
 
@@ -1185,6 +1187,7 @@ describe("App", () => {
       "Antigravity",
       "ZCode",
       "Hermes",
+      "Kimi Code",
     ]);
     expect(Array.from(sourceSelect.options).map((option) => option.textContent)).not.toContain(
       "Gemini",
@@ -2710,10 +2713,10 @@ describe("App", () => {
       if (command === "check_github_release_update") {
         return {
           shouldUpdate: true,
-          version: "1.3.2",
+          version: "1.3.3",
           notes: "Bug fixes",
           publishedAt: "2026-06-22T12:00:00Z",
-          assetName: "ChatMem_1.3.2_x64-setup.exe",
+          assetName: "ChatMem_1.3.3_x64-setup.exe",
         };
       }
       return baseImplementation?.(command, payload) ?? [];

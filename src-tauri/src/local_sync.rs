@@ -226,6 +226,7 @@ const AGENT_LIST: &[&str] = &[
     "opencode",
     "zcode",
     "hermes",
+    "kimi",
 ];
 
 /// Perform bidirectional sync between local agents and a sync folder.

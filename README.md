@@ -1,19 +1,38 @@
 # ChatMem
 
-## v1.3.2 Release Status
+## v1.3.3 Release Status
 
-- The `v1.3.2` GitHub Release adds Google Antigravity CLI integration on top of the v1.3.x workbench and sync fixes.
-- macOS Apple Silicon DMG is attached to the release. Windows developers should use the parity guide below to ship the matching Windows build.
+- The `v1.3.3` GitHub Release adds native Kimi Code support (MCP, skill, global guidance, and local-history reading) on top of the v1.3.x workbench.
+- macOS Apple Silicon DMG ships first. Windows developers should use the parity guide below to ship the matching Windows build.
 - In-app update checks read the latest GitHub Release tag directly. If a newer release includes a Windows installer, ChatMem downloads and launches it. If the installed version already matches the latest release, ChatMem reports that it is up to date.
-- Full release notes: [`docs/releases/v1.3.2.md`](./docs/releases/v1.3.2.md).
+- Full release notes: [`docs/releases/v1.3.3.md`](./docs/releases/v1.3.3.md).
 
-ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、Codex、Gemini、OpenCode、ZCode、Hermes 等本地对话历史整理成可搜索、可恢复、可迁移、可继续使用的项目上下文。
+ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、Codex、Gemini、OpenCode、ZCode、Hermes、Kimi Code 等本地对话历史整理成可搜索、可恢复、可迁移、可继续使用的项目上下文。
 
 它不是另一个聊天客户端。ChatMem 解决的是 AI 编程里最容易断线的部分：换 agent、换窗口、换机器、隔几天回来，模型不知道之前发生过什么。ChatMem 会把本地对话作为证据层索引，再把稳定知识沉淀为启动规则、Wiki、checkpoint 和 handoff，并通过桌面端与 MCP 把这些上下文带回新的 agent 会话。
 
 ## 当前版本
 
-最新版本：`v1.3.2`
+最新版本：`v1.3.3`
+
+### v1.3.3 重点更新
+
+**Kimi Code 原生集成**
+- 设置 -> Agent 集成新增 `Kimi Code`，`一键安装到全部` 包含 Kimi Code。
+- MCP 写入 `~/.kimi-code/mcp.json` 的 `mcpServers.chatmem`（stdio：`ChatMem --mcp`，`startupTimeoutMs: 30000`）。
+- ChatMem skill 写入 `~/.kimi-code/skills/chatmem/SKILL.md`。
+- 全局引导规则写入 `~/.kimi-code/AGENTS.md`（托管块，幂等覆盖）。
+- 设置 `KIMI_CODE_HOME` 时所有路径跟随该变量；卸载只移除 ChatMem 写入的配置，不影响其他 MCP server、skill 和规则。
+
+**Kimi Code 本地历史读取**
+- 新增 `agentswap-kimi` adapter，读取 `~/.kimi-code/sessions/<workDirKey>/<sessionId>/` 下的 `state.json` 和 `agents/**/wire.jsonl`。
+- 从 `turn.prompt` 提取真实用户输入，从 `content.part` 提取 assistant 正文和 thinking，tool result 按 `toolCallId` 精确回填。
+- 主 agent 与子代理 wire 按时间戳合并为同一时间线；项目根目录取自 `state.json` 的 `workDir`。
+- 首页来源、WebDAV 同步、本地文件夹同步和 `import_all_local_history` 全部包含 Kimi Code；adapter 只读，恢复命令为 `kimi --session <sessionId>`。
+
+**开发文档**
+- Release 说明见 `docs/releases/v1.3.3.md`。
+- Windows 端同功能实现指南见 `docs/windows-v1.3.3-kimi-implementation.md`。
 
 ### v1.3.2 重点更新
 
@@ -224,6 +243,7 @@ macOS 推荐下载：
 | OpenCode | 来源 -> 项目 -> 对话 | 解析 OpenCode 本地会话；仅在本机存在可读数据目录时显示。 |
 | Hermes | 来源 -> 项目 -> 对话 | 解析 Hermes Agent SQLite 数据库（`~/.hermes/state.db`）。 |
 | ZCode | 来源 -> CLI -> 项目 -> 对话 | 解析 `~/.zcode/v2/acp-config`，把 ZCode 作为顶层来源，再按内部 CLI 分组。 |
+| Kimi Code | 来源 -> 项目 -> 对话 | 解析 `~/.kimi-code/sessions` 下的 `state.json` 与 `wire.jsonl`（含子代理）；支持 `KIMI_CODE_HOME`；仅在本机存在可读会话时显示。 |
 
 主界面的来源下拉只展示当前电脑已安装且可读取的来源；设置页的 Agent 集成仍会展示可安装/可修复的目标。
 
