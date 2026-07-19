@@ -47,6 +47,12 @@ pub async fn check_github_release_update() -> Result<GithubUpdateCheck, String> 
 
 #[tauri::command]
 pub async fn install_github_release_update() -> Result<GithubUpdateCheck, String> {
+    // The direct NSIS installer path only works on Windows. Other platforms
+    // fall back to Tauri's signed updater in the frontend (updater.ts).
+    if !cfg!(target_os = "windows") {
+        return Err("github release installer is only available on windows".to_string());
+    }
+
     let release = fetch_latest_release().await?;
     let version = normalize_version(&release.tag_name);
     if compare_versions(&version, CURRENT_VERSION) != Ordering::Greater {

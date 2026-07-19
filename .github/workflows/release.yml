@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   release-windows:
@@ -14,6 +20,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Resolve release tag
+        shell: bash
+        run: echo "RELEASE_TAG=${{ github.event.release.tag_name || github.ref_name }}" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,14 +46,14 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ChatMem ${{ github.ref_name }}
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: ChatMem ${{ env.RELEASE_TAG }}
           releaseBody: |
             推荐下载 / Recommended downloads:
             - Windows installer: download the `.exe` installer if you want the normal install flow.
-            - Windows portable: download `ChatMem-${{ github.ref_name }}-portable.zip` if you want a no-install portable build.
-            - macOS Apple Silicon (M1/M2/M3/M4): download `ChatMem-${{ github.ref_name }}-macOS-Apple-Silicon.dmg`.
-            - macOS Intel: download `ChatMem-${{ github.ref_name }}-macOS-Intel.dmg`.
+            - Windows portable: download `ChatMem-${{ env.RELEASE_TAG }}-portable.zip` if you want a no-install portable build.
+            - macOS Apple Silicon (M1/M2/M3/M4): download `ChatMem-${{ env.RELEASE_TAG }}-macOS-Apple-Silicon.dmg`.
+            - macOS Intel: download `ChatMem-${{ env.RELEASE_TAG }}-macOS-Intel.dmg`.
 
             What users should download:
             - Regular users should download the release package above, not the GitHub source code zip/tar.gz.
@@ -63,7 +75,7 @@ jobs:
       - name: Build portable zip
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart("v")
+          $version = "${{ env.RELEASE_TAG }}".TrimStart("v")
           .\scripts\build-portable.ps1 -Version $version
 
       - name: Upload portable zip
@@ -88,6 +100,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Resolve release tag
+        shell: bash
+        run: echo "RELEASE_TAG=${{ github.event.release.tag_name || github.ref_name }}" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -110,14 +128,14 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ChatMem ${{ github.ref_name }}
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: ChatMem ${{ env.RELEASE_TAG }}
           releaseBody: |
             推荐下载 / Recommended downloads:
             - Windows installer: download the `.exe` installer if you want the normal install flow.
-            - Windows portable: download `ChatMem-${{ github.ref_name }}-portable.zip` if you want a no-install portable build.
-            - macOS Apple Silicon (M1/M2/M3/M4): download `ChatMem-${{ github.ref_name }}-macOS-Apple-Silicon.dmg`.
-            - macOS Intel: download `ChatMem-${{ github.ref_name }}-macOS-Intel.dmg`.
+            - Windows portable: download `ChatMem-${{ env.RELEASE_TAG }}-portable.zip` if you want a no-install portable build.
+            - macOS Apple Silicon (M1/M2/M3/M4): download `ChatMem-${{ env.RELEASE_TAG }}-macOS-Apple-Silicon.dmg`.
+            - macOS Intel: download `ChatMem-${{ env.RELEASE_TAG }}-macOS-Intel.dmg`.
 
             What users should download:
             - Regular users should download the release package above, not the GitHub source code zip/tar.gz.
@@ -140,7 +158,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           arch_label="Intel"
           if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
             arch_label="Apple-Silicon"

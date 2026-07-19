@@ -24,7 +24,9 @@ function isMissingNativeUpdateCommand(error: unknown) {
     message.includes("unknown command") ||
     message.includes("command not found") ||
     message.includes("not found: check_github_release_update") ||
-    message.includes("not found: install_github_release_update")
+    message.includes("not found: install_github_release_update") ||
+    // Non-Windows builds reject the direct installer path; use the signed updater.
+    message.includes("only available on windows")
   );
 }
 
