@@ -1,7 +1,10 @@
 name: ci-probe
-on: [push]
+on:
+  push:
+    tags:
+      - "probe-*"
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "probe ok"
+      - run: echo "tag probe ok"
