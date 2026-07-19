@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
+import packageInfo from "../../package.json";
 import { I18nProvider } from "../i18n/I18nProvider";
 import { truncateSidebarTitle, truncateWorkspaceTitle } from "../utils/titleUtils";
 
@@ -611,7 +612,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Control Center" })).toBeTruthy();
   });
 
-  it("renders the 1.3.6 version without an About utility entry", async () => {
+  it("renders the current version without an About utility entry", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -619,7 +620,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect((await screen.findAllByText("v1.3.6")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(`v${packageInfo.version}`)).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "About us" })).toBeNull();
   });
 

@@ -103,7 +103,14 @@ mod tests {
 
         let canonical = canonical_repo_root(nested.to_str().unwrap());
 
-        assert_eq!(canonical, normalize_repo_root(&root.to_string_lossy()));
+        // canonical_repo_root resolves symlinks (/var -> /private/var on
+        // macOS), so compare against the canonicalized temp root.
+        let expected = normalize_repo_root(
+            &std::fs::canonicalize(&root)
+                .unwrap()
+                .to_string_lossy(),
+        );
+        assert_eq!(canonical, expected);
 
         let _ = std::fs::remove_dir_all(root);
     }
