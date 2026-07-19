@@ -94,6 +94,8 @@ struct ListMemoryConflictsPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct ListEntityGraphInput {
     pub repo_root: String,
+    // See models.rs: schema as i64 to avoid non-standard "uint" format.
+    #[schemars(with = "Option<i64>")]
     pub limit: Option<usize>,
 }
 

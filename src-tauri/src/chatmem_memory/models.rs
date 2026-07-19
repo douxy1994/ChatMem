@@ -152,8 +152,13 @@ pub struct SearchHistoryMatch {
 pub struct EmbeddingRebuildReport {
     pub provider: String,
     pub embedding_model: String,
+    // JSON Schema has no unsigned-int format; emit standard "int64" so MCP
+    // clients (ajv) don't warn about unknown format "uint".
+    #[schemars(with = "i64")]
     pub dimensions: usize,
+    #[schemars(with = "i64")]
     pub indexed_documents: usize,
+    #[schemars(with = "i64")]
     pub fallback_indexed_documents: usize,
 }
 
@@ -180,8 +185,11 @@ pub struct HistoryConversationPayload {
     pub started_at: String,
     pub updated_at: String,
     pub storage_path: Option<String>,
+    #[schemars(with = "i64")]
     pub total_message_count: usize,
+    #[schemars(with = "i64")]
     pub returned_message_count: usize,
+    #[schemars(with = "i64")]
     pub token_estimate: usize,
     pub focused_message_id: Option<String>,
     pub messages: Vec<HistoryConversationMessage>,
@@ -192,6 +200,7 @@ pub struct EntityNodeResponse {
     pub entity_id: String,
     pub name: String,
     pub kind: String,
+    #[schemars(with = "i64")]
     pub mention_count: usize,
 }
 
@@ -214,6 +223,7 @@ pub struct EntityGraphPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AgentConversationCount {
     pub source_agent: String,
+    #[schemars(with = "i64")]
     pub conversation_count: usize,
 }
 
@@ -221,6 +231,7 @@ pub struct AgentConversationCount {
 pub struct ObservedProjectRootCount {
     pub source_agent: String,
     pub project_root: String,
+    #[schemars(with = "i64")]
     pub conversation_count: usize,
 }
 
@@ -235,8 +246,11 @@ pub struct RepoAliasResponse {
 pub struct RepoScanReport {
     pub repo_root: String,
     pub canonical_repo_root: String,
+    #[schemars(with = "i64")]
     pub scanned_conversation_count: usize,
+    #[schemars(with = "i64")]
     pub linked_conversation_count: usize,
+    #[schemars(with = "i64")]
     pub skipped_conversation_count: usize,
     pub source_agents: Vec<AgentConversationCount>,
     pub unmatched_project_roots: Vec<ObservedProjectRootCount>,
@@ -246,9 +260,13 @@ pub struct RepoScanReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LocalHistoryImportReport {
+    #[schemars(with = "i64")]
     pub scanned_conversation_count: usize,
+    #[schemars(with = "i64")]
     pub imported_conversation_count: usize,
+    #[schemars(with = "i64")]
     pub skipped_conversation_count: usize,
+    #[schemars(with = "i64")]
     pub indexed_repo_count: usize,
     pub source_agents: Vec<AgentConversationCount>,
     pub imported_project_roots: Vec<ObservedProjectRootCount>,
@@ -260,8 +278,11 @@ pub struct LocalHistoryImportReport {
 pub struct RepoScanSummary {
     pub repo_root: String,
     pub canonical_repo_root: String,
+    #[schemars(with = "i64")]
     pub scanned_conversation_count: usize,
+    #[schemars(with = "i64")]
     pub linked_conversation_count: usize,
+    #[schemars(with = "i64")]
     pub skipped_conversation_count: usize,
     pub source_agents: Vec<AgentConversationCount>,
     pub unmatched_project_roots: Vec<ObservedProjectRootCount>,
@@ -273,9 +294,13 @@ pub struct RepoScanSummary {
 pub struct RepoMemoryHealthResponse {
     pub repo_root: String,
     pub canonical_repo_root: String,
+    #[schemars(with = "i64")]
     pub approved_memory_count: usize,
+    #[schemars(with = "i64")]
     pub pending_candidate_count: usize,
+    #[schemars(with = "i64")]
     pub search_document_count: usize,
+    #[schemars(with = "i64")]
     pub indexed_chunk_count: usize,
     pub inherited_repo_roots: Vec<String>,
     pub repo_aliases: Vec<RepoAliasResponse>,
@@ -328,6 +353,7 @@ pub struct GetRepoMemoryInput {
 pub struct SearchRepoHistoryInput {
     pub repo_root: String,
     pub query: String,
+    #[schemars(with = "Option<i64>")]
     pub limit: Option<usize>,
 }
 
@@ -337,6 +363,7 @@ pub struct ReadHistoryConversationInput {
     pub conversation_id: String,
     pub message_id: Option<String>,
     pub query: Option<String>,
+    #[schemars(with = "Option<i64>")]
     pub limit: Option<usize>,
 }
 
@@ -345,6 +372,7 @@ pub struct GetProjectContextInput {
     pub repo_root: String,
     pub query: String,
     pub intent: Option<String>,
+    #[schemars(with = "Option<i64>")]
     pub limit: Option<usize>,
 }
 

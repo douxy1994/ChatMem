@@ -15,6 +15,8 @@ pub struct RunRecord {
     pub summary: String,
     pub started_at: String,
     pub ended_at: Option<String>,
+    // See models.rs: schema as i64 to avoid non-standard "uint" format.
+    #[schemars(with = "i64")]
     pub artifact_count: usize,
 }
 
