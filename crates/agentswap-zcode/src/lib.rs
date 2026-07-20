@@ -9,5 +9,5 @@ pub mod adapter;
 
 pub use adapter::{
     discover_profiles, ZCodeAdapter, ZCodeClaudeAdapter, ZCodeCodexAdapter, ZCodeGeminiAdapter,
-    ZCodeOpenCodeAdapter, ZCodeProfileStatus,
+    ZCodeGlmAdapter, ZCodeOpenCodeAdapter, ZCodeProfileStatus,
 };

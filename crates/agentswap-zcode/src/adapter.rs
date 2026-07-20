@@ -16,7 +16,7 @@ use agentswap_core::types::{
 };
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::{json, Value};
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -66,6 +66,11 @@ pub struct ZCodeOpenCodeAdapter {
 }
 
 #[derive(Debug, Clone)]
+pub struct ZCodeGlmAdapter {
+    root_dir: PathBuf,
+}
+
+#[derive(Debug, Clone)]
 struct ClaudeSessionPath {
     id: String,
     profile_id: String,
@@ -88,6 +93,7 @@ struct ParsedZCodeTask {
     profile_id: String,
     provider: String,
     acp_session_id: Option<String>,
+    trace_id: Option<String>,
     project_dir: String,
     title: Option<String>,
     created_at: DateTime<Utc>,
@@ -159,6 +165,10 @@ impl ZCodeAdapter {
         ZCodeOpenCodeAdapter::with_root_dir(self.root_dir.clone())
     }
 
+    fn glm_adapter(&self) -> ZCodeGlmAdapter {
+        ZCodeGlmAdapter::with_root_dir(self.root_dir.clone())
+    }
+
     fn engine_dir(&self) -> PathBuf {
         self.root_dir.clone()
     }
@@ -193,7 +203,8 @@ impl ZCodeAdapter {
         let path = self
             .find_task_path(profile_id, task_id)
             .ok_or_else(|| anyhow::anyhow!("ZCode task session not found: {profile_id}:{task_id}"))?;
-        let mut conversation = parse_zcode_task_conversation(&path, profile_id)?;
+        let title_overrides = load_task_title_overrides(&zcode_v2_dir(&self.root_dir));
+        let mut conversation = parse_zcode_task_conversation(&path, profile_id, &title_overrides)?;
         conversation.id = full_id.to_string();
         for message in &mut conversation.messages {
             message
@@ -217,6 +228,12 @@ impl Default for ZCodeGeminiAdapter {
 }
 
 impl Default for ZCodeOpenCodeAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for ZCodeGlmAdapter {
     fn default() -> Self {
         Self::new()
     }
@@ -369,6 +386,22 @@ impl ZCodeOpenCodeAdapter {
     }
 }
 
+impl ZCodeGlmAdapter {
+    pub fn new() -> Self {
+        Self {
+            root_dir: default_zcode_root(),
+        }
+    }
+
+    pub fn with_root_dir(root_dir: PathBuf) -> Self {
+        Self { root_dir }
+    }
+
+    fn cli_db_path(&self) -> PathBuf {
+        glm_cli_db_path(&self.root_dir)
+    }
+}
+
 pub fn discover_profiles(root_dir: &Path) -> Vec<ZCodeProfileStatus> {
     let mut statuses = Vec::new();
     for engine in [
@@ -430,6 +463,24 @@ fn discover_profile(engine: &str, profile_id: &str, profile_dir: &Path) -> ZCode
             };
             (capability.to_string(), db_count)
         }
+        GLM_ENGINE => {
+            // The GLM CLI keeps one global store at ~/.zcode/cli/db/db.sqlite,
+            // shared by every glm profile under acp-config.
+            let db_path = profile_dir
+                .parent()
+                .and_then(Path::parent)
+                .map(glm_cli_db_path);
+            match db_path {
+                Some(db_path) if db_path.is_file() => {
+                    let session_count = count_glm_sessions(&db_path).unwrap_or_else(|error| {
+                        warnings.push(format!("Cannot inspect GLM DB: {error}"));
+                        0
+                    });
+                    ("conversation_reader".to_string(), session_count)
+                }
+                _ => ("config_only".to_string(), 0),
+            }
+        }
         _ => ("config_only".to_string(), 0),
     };
 
@@ -450,15 +501,18 @@ impl AgentAdapter for ZCodeAdapter {
                 || self.codex_adapter().is_available()
                 || self.gemini_adapter().is_available()
                 || self.opencode_adapter().is_available()
+                || self.glm_adapter().is_available()
                 || self.task_sessions_dir().is_dir())
     }
 
     fn list_conversations(&self) -> Result<Vec<ConversationSummary>> {
         let mut summaries = Vec::new();
         let mut task_backed_cli_ids = HashSet::new();
+        let title_overrides = load_task_title_overrides(&zcode_v2_dir(&self.root_dir));
         for task_path in self.list_task_paths() {
             match parse_zcode_task(&task_path) {
-                Ok(task) => {
+                Ok(mut task) => {
+                    apply_task_title_override(&mut task, &title_overrides);
                     if let Some(acp_session_id) = &task.acp_session_id {
                         task_backed_cli_ids.insert(encode_zcode_cli_id(
                             &task.provider,
@@ -492,6 +546,11 @@ impl AgentAdapter for ZCodeAdapter {
             summary.source_agent = AgentKind::ZCode;
             summaries.push(summary);
         }
+        for mut summary in self.glm_adapter().list_conversations()? {
+            summary.id = encode_zcode_cli_id(GLM_ENGINE, &summary.id);
+            summary.source_agent = AgentKind::ZCode;
+            summaries.push(summary);
+        }
         summaries.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
         Ok(summaries)
     }
@@ -507,6 +566,7 @@ impl AgentAdapter for ZCodeAdapter {
             CODEX_ENGINE => self.codex_adapter().read_conversation(raw_id)?,
             GEMINI_ENGINE => self.gemini_adapter().read_conversation(raw_id)?,
             OPENCODE_ENGINE => self.opencode_adapter().read_conversation(raw_id)?,
+            GLM_ENGINE => self.glm_adapter().read_conversation(raw_id)?,
             _ => anyhow::bail!("Unsupported ZCode CLI in id: {engine}"),
         };
         conv.id = id.to_string();
@@ -785,6 +845,52 @@ impl AgentAdapter for ZCodeOpenCodeAdapter {
     }
 }
 
+impl AgentAdapter for ZCodeGlmAdapter {
+    fn is_available(&self) -> bool {
+        self.cli_db_path().is_file()
+    }
+
+    fn list_conversations(&self) -> Result<Vec<ConversationSummary>> {
+        let title_overrides = load_task_title_overrides(&zcode_v2_dir(&self.root_dir));
+        Ok(list_glm_session_summaries(
+            &self.cli_db_path(),
+            &title_overrides,
+        ))
+    }
+
+    fn read_conversation(&self, id: &str) -> Result<Conversation> {
+        let title_overrides = load_task_title_overrides(&zcode_v2_dir(&self.root_dir));
+        read_glm_conversation(&self.cli_db_path(), id, &title_overrides)
+    }
+
+    fn write_conversation(&self, _conv: &Conversation) -> Result<String> {
+        anyhow::bail!("ZCode GLM write is disabled to avoid writing the active ZCode CLI database")
+    }
+
+    fn delete_conversation(&self, id: &str) -> Result<()> {
+        anyhow::bail!("ZCode GLM delete is disabled to avoid writing the active ZCode CLI database: {id}")
+    }
+
+    fn render_prompt(&self, conv: &Conversation) -> Result<String> {
+        Ok(render_prompt(conv))
+    }
+
+    fn agent_kind(&self) -> AgentKind {
+        AgentKind::ZCode
+    }
+
+    fn display_name(&self) -> &str {
+        "ZCode GLM"
+    }
+
+    fn data_dir(&self) -> PathBuf {
+        self.cli_db_path()
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| self.cli_db_path())
+    }
+}
+
 fn default_zcode_root() -> PathBuf {
     let mut root = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     for part in ZCODE_ROOT_PARTS {
@@ -802,6 +908,18 @@ fn zcode_v2_dir(root_dir: &Path) -> PathBuf {
     }
 
     root_dir.to_path_buf()
+}
+
+/// The built-in GLM CLI keeps its conversation store outside `v2/`, at
+/// `~/.zcode/cli/db/db.sqlite` (one level above the v2 dir).
+fn glm_cli_db_path(root_dir: &Path) -> PathBuf {
+    let v2_dir = zcode_v2_dir(root_dir);
+    v2_dir
+        .parent()
+        .unwrap_or(v2_dir.as_path())
+        .join("cli")
+        .join("db")
+        .join("db.sqlite")
 }
 
 fn profile_dirs(engine_dir: &Path) -> Vec<(String, PathBuf)> {
@@ -880,6 +998,7 @@ fn parse_zcode_task(task_path: &ZCodeTaskPath) -> Result<ParsedZCodeTask> {
         .map(ms_to_datetime)
         .unwrap_or(created_at);
     let acp_session_id = value_string(meta, "acpSessionId");
+    let trace_id = value_string(meta, "traceId");
     let message_count = value
         .get("messages")
         .and_then(|messages| messages.as_array())
@@ -907,6 +1026,7 @@ fn parse_zcode_task(task_path: &ZCodeTaskPath) -> Result<ParsedZCodeTask> {
         profile_id: task_path.profile_id.clone(),
         provider,
         acp_session_id,
+        trace_id,
         project_dir,
         title,
         created_at,
@@ -934,7 +1054,354 @@ fn zcode_task_summary(task: &ParsedZCodeTask) -> ConversationSummary {
     }
 }
 
-fn parse_zcode_task_conversation(path: &Path, profile_id: &str) -> Result<Conversation> {
+/// Load user-renamed task titles from `tasks-index.sqlite` (one level above `sessions/`).
+/// ZCode renames only update this index, never the session JSON's `meta.title`.
+///
+/// The index regenerates its own `task_id`s, so entries are keyed by both the
+/// index `task_id` and the `traceId` stored in `meta_json` — the session JSON's
+/// `meta.traceId` is the only key that lines up with the on-disk task files.
+/// Any failure (missing/unreadable/invalid index) yields an empty map so that
+/// listing and reading never break because of the index.
+fn load_task_title_overrides(v2_dir: &Path) -> HashMap<String, String> {
+    let mut overrides = HashMap::new();
+    let db_path = v2_dir.join("tasks-index.sqlite");
+    let Ok(conn) = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY) else {
+        return overrides;
+    };
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT task_id, title, meta_json FROM tasks \
+         WHERE title_overridden = 1 AND title != '' AND deleted = 0",
+    ) else {
+        return overrides;
+    };
+    let Ok(rows) = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    }) else {
+        return overrides;
+    };
+    for row in rows.flatten() {
+        let (task_id, title, meta_json) = row;
+        if let Ok(meta) = serde_json::from_str::<Value>(&meta_json) {
+            if let Some(trace_id) = value_string(&meta, "traceId") {
+                overrides.insert(trace_id, title.clone());
+            }
+        }
+        overrides.insert(task_id, title);
+    }
+    overrides
+}
+
+fn apply_task_title_override(task: &mut ParsedZCodeTask, overrides: &HashMap<String, String>) {
+    let overridden = overrides
+        .get(&task.task_id)
+        .or_else(|| task.trace_id.as_ref().and_then(|id| overrides.get(id)));
+    if let Some(title) = overridden {
+        if is_meaningful_task_text(title) {
+            task.title = Some(title.clone());
+        }
+    }
+}
+
+fn open_glm_db(db_path: &Path) -> Option<Connection> {
+    Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
+}
+
+fn count_glm_sessions(db_path: &Path) -> Result<usize> {
+    let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let count = conn.query_row(
+        "SELECT COUNT(*) FROM session WHERE task_type = 'interactive'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    Ok(count.max(0) as usize)
+}
+
+/// List the built-in GLM CLI's top-level (`interactive`) sessions.
+/// `subagent_child` rows stay out of the top-level list, mirroring how Claude
+/// subagent sessions are filtered. Any failure yields an empty list so that
+/// a missing/unreadable database never breaks the merged listing.
+fn list_glm_session_summaries(
+    db_path: &Path,
+    overrides: &HashMap<String, String>,
+) -> Vec<ConversationSummary> {
+    let mut summaries = Vec::new();
+    let Some(conn) = open_glm_db(db_path) else {
+        return summaries;
+    };
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT id, directory, title, time_created, time_updated \
+         FROM session WHERE task_type = 'interactive' ORDER BY time_updated DESC",
+    ) else {
+        return summaries;
+    };
+    let Ok(rows) = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+        ))
+    }) else {
+        return summaries;
+    };
+    let message_counts = glm_message_counts(&conn);
+    for row in rows.flatten() {
+        let (id, directory, title, created_ms, updated_ms) = row;
+        let summary = glm_session_title(&conn, &id, &title, overrides);
+        let message_count = message_counts.get(&id).copied().unwrap_or(0);
+        summaries.push(ConversationSummary {
+            id,
+            source_agent: AgentKind::ZCode,
+            project_dir: normalize_project_dir(&directory),
+            created_at: ms_to_datetime(created_ms),
+            updated_at: ms_to_datetime(updated_ms),
+            summary,
+            message_count,
+            file_count: 0,
+        });
+    }
+    summaries
+}
+
+/// Title precedence: tasks-index rename override > session.title > first user
+/// message (mirrors the zcode task summary fallback chain).
+fn glm_session_title(
+    conn: &Connection,
+    session_id: &str,
+    title: &str,
+    overrides: &HashMap<String, String>,
+) -> Option<String> {
+    overrides
+        .get(session_id)
+        .cloned()
+        .or_else(|| is_meaningful_task_text(title).then(|| title.to_string()))
+        .or_else(|| first_glm_user_text(conn, session_id).map(|text| truncate_str(&text, 100)))
+}
+
+fn glm_message_counts(conn: &Connection) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    let Ok(mut stmt) =
+        conn.prepare("SELECT session_id, COUNT(*) FROM message GROUP BY session_id")
+    else {
+        return counts;
+    };
+    if let Ok(rows) = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    }) {
+        for row in rows.flatten() {
+            counts.insert(row.0, row.1.max(0) as usize);
+        }
+    }
+    counts
+}
+
+fn first_glm_user_text(conn: &Connection, session_id: &str) -> Option<String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, data FROM message WHERE session_id = ?1 \
+             ORDER BY time_created ASC, id ASC",
+        )
+        .ok()?;
+    let rows = stmt
+        .query_map([session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .ok()?;
+    for row in rows.flatten() {
+        let (message_id, data) = row;
+        let Ok(value) = serde_json::from_str::<Value>(&data) else {
+            continue;
+        };
+        if task_role(&value) != Role::User {
+            continue;
+        }
+        if let Some(text) = glm_message_text(conn, &message_id) {
+            if is_meaningful_task_text(&text) {
+                return Some(text);
+            }
+        }
+    }
+    None
+}
+
+fn glm_message_text(conn: &Connection, message_id: &str) -> Option<String> {
+    let mut stmt = conn
+        .prepare("SELECT data FROM part WHERE message_id = ?1 ORDER BY time_created ASC, id ASC")
+        .ok()?;
+    let rows = stmt
+        .query_map([message_id], |row| row.get::<_, String>(0))
+        .ok()?;
+    let text = rows
+        .flatten()
+        .filter_map(|data| serde_json::from_str::<Value>(&data).ok())
+        .filter(|part| value_string(part, "type").as_deref() == Some("text"))
+        .filter_map(|part| value_string(&part, "text"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    (!text.is_empty()).then_some(text)
+}
+
+fn read_glm_conversation(
+    db_path: &Path,
+    session_id: &str,
+    overrides: &HashMap<String, String>,
+) -> Result<Conversation> {
+    let conn = open_glm_db(db_path)
+        .ok_or_else(|| anyhow::anyhow!("ZCode GLM database not found: {}", db_path.display()))?;
+    let (directory, title, created_ms, updated_ms) = conn
+        .query_row(
+            "SELECT directory, title, time_created, time_updated FROM session WHERE id = ?1",
+            [session_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or_else(|| anyhow::anyhow!("ZCode GLM session not found: {session_id}"))?;
+
+    let mut msg_stmt = conn.prepare(
+        "SELECT id, time_created, data FROM message WHERE session_id = ?1 \
+         ORDER BY time_created ASC, id ASC",
+    )?;
+    let message_rows = msg_stmt
+        .query_map([session_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut part_stmt = conn.prepare(
+        "SELECT message_id, data FROM part WHERE session_id = ?1 \
+         ORDER BY time_created ASC, id ASC",
+    )?;
+    let part_rows = part_stmt
+        .query_map([session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut parts_by_message: HashMap<String, Vec<Value>> = HashMap::new();
+    for (message_id, data) in part_rows {
+        if let Ok(value) = serde_json::from_str::<Value>(&data) {
+            parts_by_message.entry(message_id).or_default().push(value);
+        }
+    }
+
+    let mut messages = Vec::new();
+    for (message_id, message_ms, data) in message_rows {
+        let Ok(value) = serde_json::from_str::<Value>(&data) else {
+            continue;
+        };
+        let role = task_role(&value);
+        let timestamp = value
+            .get("time")
+            .and_then(|time| value_i64(time, "created"))
+            .map(ms_to_datetime)
+            .unwrap_or_else(|| ms_to_datetime(message_ms));
+
+        let parts = parts_by_message.remove(&message_id).unwrap_or_default();
+        let mut content_parts = Vec::new();
+        let mut thinking = Vec::new();
+        let mut tool_calls = Vec::new();
+        for part in &parts {
+            match value_string(part, "type").as_deref() {
+                Some("text") => {
+                    if let Some(text) = value_string(part, "text") {
+                        content_parts.push(text);
+                    }
+                }
+                Some("reasoning") => {
+                    if let Some(text) = value_string(part, "text") {
+                        thinking.push(text);
+                    }
+                }
+                Some("tool") => tool_calls.push(glm_tool_call(part)),
+                _ => {}
+            }
+        }
+        let content = content_parts.join("\n");
+        if content.trim().is_empty() && tool_calls.is_empty() {
+            continue;
+        }
+        if role == Role::User && !is_meaningful_task_text(&content) {
+            continue;
+        }
+
+        let mut metadata = HashMap::new();
+        metadata.insert("zcode_engine".to_string(), json!(GLM_ENGINE));
+        metadata.insert("zcode_cli".to_string(), json!(GLM_ENGINE));
+        metadata.insert(
+            "zcode_glm_session_id".to_string(),
+            json!(session_id),
+        );
+        metadata.insert(
+            "zcode_storage_path".to_string(),
+            json!(normalize_storage_path(db_path.to_string_lossy().as_ref())),
+        );
+        if let Some(model) = value_string(&value, "modelID").or_else(|| {
+            value
+                .get("model")
+                .and_then(|model| value_string(model, "modelID"))
+        }) {
+            metadata.insert("model".to_string(), json!(model));
+        }
+        if !thinking.is_empty() {
+            metadata.insert("thinking".to_string(), json!(thinking));
+        }
+
+        messages.push(Message {
+            id: stable_uuid(&format!("zcode-glm:{}:{}", session_id, message_id)),
+            timestamp,
+            role,
+            content,
+            tool_calls,
+            metadata,
+        });
+    }
+
+    Ok(Conversation {
+        id: session_id.to_string(),
+        source_agent: AgentKind::ZCode,
+        project_dir: normalize_project_dir(&directory),
+        created_at: ms_to_datetime(created_ms),
+        updated_at: ms_to_datetime(updated_ms),
+        summary: glm_session_title(&conn, session_id, &title, overrides),
+        messages,
+        file_changes: Vec::new(),
+    })
+}
+
+fn glm_tool_call(part: &Value) -> ToolCall {
+    let state = part.get("state").unwrap_or(&Value::Null);
+    let status = match value_string(state, "status").as_deref().unwrap_or_default() {
+        "completed" | "success" | "succeeded" => ToolStatus::Success,
+        _ => ToolStatus::Error,
+    };
+    ToolCall {
+        name: value_string(part, "tool").unwrap_or_else(|| "tool".to_string()),
+        input: state.get("input").cloned().unwrap_or_else(|| json!({})),
+        output: value_string(state, "output").or_else(|| value_string(state, "result")),
+        status,
+    }
+}
+
+fn parse_zcode_task_conversation(
+    path: &Path,
+    profile_id: &str,
+    title_overrides: &HashMap<String, String>,
+) -> Result<Conversation> {
     let task_path = ZCodeTaskPath {
         task_id: path
             .file_stem()
@@ -944,7 +1411,8 @@ fn parse_zcode_task_conversation(path: &Path, profile_id: &str) -> Result<Conver
         profile_id: profile_id.to_string(),
         path: path.to_path_buf(),
     };
-    let task = parse_zcode_task(&task_path)?;
+    let mut task = parse_zcode_task(&task_path)?;
+    apply_task_title_override(&mut task, title_overrides);
     let mut messages = Vec::new();
 
     if let Some(task_messages) = task.value.get("messages").and_then(|value| value.as_array()) {
@@ -2325,6 +2793,340 @@ mod tests {
         assert!(opencode.list_conversations().unwrap().is_empty());
         assert!(gemini.write_conversation(&empty_conversation()).is_err());
         assert!(opencode.write_conversation(&empty_conversation()).is_err());
+    }
+
+    #[test]
+    fn zcode_task_title_override_from_tasks_index_wins_over_json_meta() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        let task_path = root.join("sessions").join("p1").join("task-1.json");
+        fs::create_dir_all(task_path.parent().unwrap()).unwrap();
+        let task_json = json!({
+            "meta": {
+                "taskId": "task-1",
+                "traceId": "t-abc123",
+                "title": "Old title",
+                "workspacePath": r"D:\VSP",
+                "createdAt": 1778859901472_i64,
+                "updatedAt": 1778859920861_i64,
+                "provider": "claude",
+            },
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "hello",
+                    "timestamp": 1778859901472_i64,
+                },
+            ],
+            "fileChanges": [],
+        });
+        fs::write(&task_path, serde_json::to_vec(&task_json).unwrap()).unwrap();
+
+        let conn = Connection::open(root.join("tasks-index.sqlite")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tasks (
+                workspace_key TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                deleted INTEGER NOT NULL DEFAULT 0,
+                meta_json TEXT NOT NULL DEFAULT '{}',
+                title_overridden INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (workspace_key, task_id)
+            );",
+        )
+        .unwrap();
+        // The index regenerates its own task ids; the traceId inside meta_json
+        // is the only key that lines up with the session JSON's meta.traceId.
+        conn.execute(
+            "INSERT INTO tasks (workspace_key, task_id, title, deleted, meta_json, title_overridden)
+             VALUES (?1, ?2, ?3, 0, ?4, 1)",
+            params![
+                r"D:\VSP",
+                "sess_regenerated-id",
+                "Renamed by user",
+                r#"{"taskId":"sess_regenerated-id","traceId":"t-abc123","title":"Renamed by user"}"#,
+            ],
+        )
+        .unwrap();
+        // Non-overridden rows must not leak into the title map.
+        conn.execute(
+            "INSERT INTO tasks (workspace_key, task_id, title, deleted, meta_json, title_overridden)
+             VALUES (?1, ?2, ?3, 0, ?4, 0)",
+            params![r"D:\VSP", "task-1", "Index title without override", r"{}"],
+        )
+        .unwrap();
+
+        let adapter = ZCodeAdapter::with_root_dir(root.to_path_buf());
+        let summaries = adapter.list_conversations().unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].summary.as_deref(), Some("Renamed by user"));
+
+        let conversation = adapter.read_conversation("claude:task:p1:task-1").unwrap();
+        assert_eq!(conversation.summary.as_deref(), Some("Renamed by user"));
+    }
+
+    #[test]
+    fn zcode_task_title_falls_back_to_json_meta_when_tasks_index_missing() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        let task_path = root.join("sessions").join("p1").join("task-1.json");
+        fs::create_dir_all(task_path.parent().unwrap()).unwrap();
+        let task_json = json!({
+            "meta": {
+                "taskId": "task-1",
+                "traceId": "t-abc123",
+                "title": "Old title",
+                "workspacePath": r"D:\VSP",
+                "createdAt": 1778859901472_i64,
+                "updatedAt": 1778859920861_i64,
+                "provider": "claude",
+            },
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "hello",
+                    "timestamp": 1778859901472_i64,
+                },
+            ],
+            "fileChanges": [],
+        });
+        fs::write(&task_path, serde_json::to_vec(&task_json).unwrap()).unwrap();
+
+        let adapter = ZCodeAdapter::with_root_dir(root.to_path_buf());
+        let summaries = adapter.list_conversations().unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].summary.as_deref(), Some("Old title"));
+
+        let conversation = adapter.read_conversation("claude:task:p1:task-1").unwrap();
+        assert_eq!(conversation.summary.as_deref(), Some("Old title"));
+    }
+
+    /// Build a `.zcode` layout under `tmp`: returns the acp-config root to pass
+    /// to `with_root_dir`, with the GLM CLI store created at `cli/db/db.sqlite`.
+    fn create_glm_cli_db(tmp: &TempDir) -> (PathBuf, Connection) {
+        let root = tmp.path().join("v2").join("acp-config");
+        fs::create_dir_all(&root).unwrap();
+        let db_path = tmp.path().join("cli").join("db").join("db.sqlite");
+        fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+        let conn = Connection::open(db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE session (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                parent_id TEXT,
+                slug TEXT NOT NULL,
+                directory TEXT NOT NULL,
+                title TEXT NOT NULL,
+                task_type TEXT NOT NULL DEFAULT 'interactive',
+                trace_id TEXT,
+                time_created INTEGER NOT NULL,
+                time_updated INTEGER NOT NULL
+            );
+            CREATE TABLE message (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                time_created INTEGER NOT NULL,
+                time_updated INTEGER NOT NULL,
+                data TEXT NOT NULL
+            );
+            CREATE TABLE part (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                time_created INTEGER NOT NULL,
+                time_updated INTEGER NOT NULL,
+                data TEXT NOT NULL
+            );",
+        )
+        .unwrap();
+        (root, conn)
+    }
+
+    fn insert_glm_conversation(conn: &Connection) {
+        conn.execute(
+            "INSERT INTO session (id, project_id, slug, directory, title, task_type, time_created, time_updated)
+             VALUES ('sess_111', 'p1', 'slug-1', ?1, 'Old GLM title', 'interactive', 1778859901472, 1778859920861)",
+            params![r"D:\VSP"],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO message (id, session_id, time_created, time_updated, data)
+             VALUES ('m1', 'sess_111', 1778859901472, 1778859901472, ?1)",
+            params![r#"{"role":"user","time":{"created":1778859901472}}"#],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO message (id, session_id, time_created, time_updated, data)
+             VALUES ('m2', 'sess_111', 1778859901480, 1778859901500, ?1)",
+            params![r#"{"role":"assistant","time":{"created":1778859901480,"completed":1778859901500},"modelID":"GLM-5.2"}"#],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+             VALUES ('p1', 'm1', 'sess_111', 1778859901472, 1778859901472, ?1)",
+            params![r#"{"type":"text","text":"请帮我重写项目"}"#],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+             VALUES ('p2', 'm2', 'sess_111', 1778859901481, 1778859901481, ?1)",
+            params![r#"{"type":"reasoning","text":"先思考一下"}"#],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+             VALUES ('p3', 'm2', 'sess_111', 1778859901482, 1778859901482, ?1)",
+            params![r#"{"type":"text","text":"好的，我来处理。"}"#],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+             VALUES ('p4', 'm2', 'sess_111', 1778859901483, 1778859901483, ?1)",
+            params![r#"{"type":"tool","callID":"call_1","tool":"Bash","state":{"status":"completed","input":{"command":"ls"},"output":"file.rs"}}"#],
+        )
+        .unwrap();
+    }
+
+    fn write_tasks_index_override(v2_dir: &Path, task_id: &str, title: &str) {
+        let conn = Connection::open(v2_dir.join("tasks-index.sqlite")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tasks (
+                workspace_key TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                deleted INTEGER NOT NULL DEFAULT 0,
+                meta_json TEXT NOT NULL DEFAULT '{}',
+                title_overridden INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (workspace_key, task_id)
+            );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO tasks (workspace_key, task_id, title, deleted, meta_json, title_overridden)
+             VALUES (?1, ?2, ?3, 0, '{}', 1)",
+            params![r"D:\VSP", task_id, title],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn zcode_glm_lists_interactive_sessions_with_tasks_index_title_override() {
+        let tmp = TempDir::new().unwrap();
+        let (root, conn) = create_glm_cli_db(&tmp);
+        insert_glm_conversation(&conn);
+        drop(conn);
+        write_tasks_index_override(&tmp.path().join("v2"), "sess_111", "Renamed GLM session");
+
+        let adapter = ZCodeAdapter::with_root_dir(root);
+        let summaries = adapter.list_conversations().unwrap();
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].id, "glm:sess_111");
+        assert_eq!(summaries[0].source_agent, AgentKind::ZCode);
+        assert_eq!(
+            summaries[0].summary.as_deref(),
+            Some("Renamed GLM session")
+        );
+        assert_eq!(summaries[0].project_dir, r"D:\VSP");
+        assert_eq!(summaries[0].message_count, 2);
+    }
+
+    #[test]
+    fn zcode_glm_reads_messages_parts_and_applies_title_override() {
+        let tmp = TempDir::new().unwrap();
+        let (root, conn) = create_glm_cli_db(&tmp);
+        insert_glm_conversation(&conn);
+        drop(conn);
+        write_tasks_index_override(&tmp.path().join("v2"), "sess_111", "Renamed GLM session");
+
+        let adapter = ZCodeAdapter::with_root_dir(root);
+        let conversation = adapter.read_conversation("glm:sess_111").unwrap();
+
+        assert_eq!(conversation.id, "glm:sess_111");
+        assert_eq!(conversation.source_agent, AgentKind::ZCode);
+        assert_eq!(conversation.project_dir, r"D:\VSP");
+        assert_eq!(
+            conversation.summary.as_deref(),
+            Some("Renamed GLM session")
+        );
+        assert_eq!(conversation.messages.len(), 2);
+
+        let user = &conversation.messages[0];
+        assert_eq!(user.role, Role::User);
+        assert_eq!(user.content, "请帮我重写项目");
+
+        let assistant = &conversation.messages[1];
+        assert_eq!(assistant.role, Role::Assistant);
+        assert_eq!(assistant.content, "好的，我来处理。");
+        assert_eq!(
+            assistant.metadata.get("thinking").and_then(|value| value.as_array()),
+            Some(&vec![json!("先思考一下")])
+        );
+        assert_eq!(assistant.tool_calls.len(), 1);
+        assert_eq!(assistant.tool_calls[0].name, "Bash");
+        assert_eq!(assistant.tool_calls[0].input, json!({"command": "ls"}));
+        assert_eq!(assistant.tool_calls[0].output.as_deref(), Some("file.rs"));
+        assert_eq!(assistant.tool_calls[0].status, ToolStatus::Success);
+    }
+
+    #[test]
+    fn zcode_glm_hides_subagent_child_sessions_from_listing() {
+        let tmp = TempDir::new().unwrap();
+        let (root, conn) = create_glm_cli_db(&tmp);
+        insert_glm_conversation(&conn);
+        conn.execute(
+            "INSERT INTO session (id, project_id, parent_id, slug, directory, title, task_type, time_created, time_updated)
+             VALUES ('sess_subagent_agent_1', 'p1', 'sess_111', 'slug-2', ?1, 'sub task', 'subagent_child', 1778859901472, 1778859920861)",
+            params![r"D:\VSP"],
+        )
+        .unwrap();
+        drop(conn);
+
+        let adapter = ZCodeGlmAdapter::with_root_dir(root);
+        let summaries = adapter.list_conversations().unwrap();
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].id, "sess_111");
+    }
+
+    #[test]
+    fn zcode_glm_missing_db_yields_empty_listing_without_panicking() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("v2").join("acp-config");
+        fs::create_dir_all(&root).unwrap();
+
+        let glm = ZCodeGlmAdapter::with_root_dir(root.clone());
+        assert!(!glm.is_available());
+        assert!(glm.list_conversations().unwrap().is_empty());
+
+        let adapter = ZCodeAdapter::with_root_dir(root);
+        assert!(!adapter.is_available());
+        assert!(adapter.list_conversations().unwrap().is_empty());
+        assert!(adapter.read_conversation("glm:sess_111").is_err());
+    }
+
+    #[test]
+    fn discovery_reports_glm_conversation_reader_from_cli_db() {
+        let tmp = TempDir::new().unwrap();
+        let (root, conn) = create_glm_cli_db(&tmp);
+        insert_glm_conversation(&conn);
+        conn.execute(
+            "INSERT INTO session (id, project_id, parent_id, slug, directory, title, task_type, time_created, time_updated)
+             VALUES ('sess_subagent_agent_1', 'p1', 'sess_111', 'slug-2', ?1, 'sub task', 'subagent_child', 1778859901472, 1778859920861)",
+            params![r"D:\VSP"],
+        )
+        .unwrap();
+        drop(conn);
+        fs::create_dir_all(root.join("glm").join("p1")).unwrap();
+
+        let statuses = discover_profiles(&root);
+
+        let glm = statuses
+            .iter()
+            .find(|status| status.engine == "glm")
+            .unwrap();
+        assert_eq!(glm.capability, "conversation_reader");
+        assert_eq!(glm.conversation_count, 1);
     }
 
     fn empty_conversation() -> Conversation {
