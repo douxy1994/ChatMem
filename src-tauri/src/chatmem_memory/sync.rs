@@ -2,6 +2,7 @@ use agentswap_claude::ClaudeAdapter;
 use agentswap_codex::CodexAdapter;
 use agentswap_core::{adapter::AgentAdapter, types::Conversation};
 use agentswap_gemini::{AntigravityAdapter, GeminiAdapter};
+use agentswap_hermes::adapter::HermesAdapter;
 use agentswap_kimi::{adapter::kimi_code_home, KimiCodeAdapter};
 use agentswap_opencode::OpenCodeAdapter;
 use agentswap_zcode::{
@@ -28,6 +29,7 @@ const LOCAL_HISTORY_AGENTS: &[&str] = &[
     "antigravity",
     "opencode",
     "zcode",
+    "hermes",
     "kimi",
 ];
 
@@ -158,6 +160,7 @@ fn get_adapter(agent: &str) -> Option<Box<dyn AgentAdapter>> {
         "zcode-codex" => Some(Box::new(ZCodeCodexAdapter::new())),
         "zcode-gemini" => Some(Box::new(ZCodeGeminiAdapter::new())),
         "zcode-opencode" => Some(Box::new(ZCodeOpenCodeAdapter::new())),
+        "hermes" => Some(Box::new(HermesAdapter::new())),
         "kimi" => Some(Box::new(KimiCodeAdapter::new())),
         _ => None,
     }

@@ -207,6 +207,18 @@ fn extract_updated_at(body: &[u8]) -> String {
     }
 }
 
+/// Extract summary from a conversation JSON blob.
+/// Missing and empty summaries are both normalized to `None` so that a
+/// conversation only counts as renamed when one side carries a real title.
+fn extract_summary(body: &[u8]) -> Option<String> {
+    serde_json::from_slice::<serde_json::Value>(body)
+        .ok()?
+        .get("summary")?
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
 /// Parse an ISO 8601 timestamp string into epoch seconds for comparison.
 fn parse_timestamp(ts: &str) -> i64 {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
@@ -299,7 +311,7 @@ pub fn bidirectional_sync(local_items: &[SyncItem], folder: &Path) -> Result<Syn
             }
 
             // Both exist → compare timestamps
-            (Some((local_ts, local_body)), Some((remote_ts, _remote_body))) => {
+            (Some((local_ts, local_body)), Some((remote_ts, remote_body))) => {
                 let local_epoch = parse_timestamp(local_ts);
                 let remote_epoch = parse_timestamp(remote_ts);
 
@@ -323,6 +335,16 @@ pub fn bidirectional_sync(local_items: &[SyncItem], folder: &Path) -> Result<Syn
                     println!(
                         "⟳ Conflict {agent}/{id}: remote newer ({remote_ts} > {local_ts}), kept remote"
                     );
+                } else if extract_summary(local_body) != extract_summary(remote_body) {
+                    // Same timestamp but the title changed (renames don't bump
+                    // updated_at) → upload so the remote copy picks up the new title
+                    let safe_name = id_to_filename(id);
+                    let file_path = conversations_dir
+                        .join(agent)
+                        .join(format!("{safe_name}.json"));
+                    fs::write(&file_path, local_body)?;
+                    uploaded += 1;
+                    println!("⟳ Title changed {agent}/{id} (ts={local_ts}), uploaded");
                 } else {
                     // Same timestamp → skip
                     skipped += 1;
@@ -496,5 +518,77 @@ pub fn check_cloud_readiness(folder: &Path, quiet_seconds: u64) -> CloudSyncRead
         is_quiet: quiet,
         has_lock_files: has_locks,
         recommended_action: action,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_folder() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("chatmem-local-sync-test-{}", uuid::Uuid::new_v4()))
+    }
+
+    fn sync_item(agent: &str, id: &str, updated_at: &str, summary: &str) -> SyncItem {
+        let body = serde_json::json!({
+            "id": id,
+            "updated_at": updated_at,
+            "summary": summary,
+        });
+        SyncItem {
+            agent: agent.to_string(),
+            id: id.to_string(),
+            updated_at: updated_at.to_string(),
+            file_name: format!("{}.json", id_to_filename(id)),
+            body: serde_json::to_vec(&body).unwrap(),
+        }
+    }
+
+    #[test]
+    fn same_timestamp_with_changed_summary_uploads_local_copy() {
+        let folder = test_folder();
+        let remote_dir = folder.join("conversations").join("codex");
+        fs::create_dir_all(&remote_dir).unwrap();
+        let remote_path = remote_dir.join(format!("{}.json", id_to_filename("thread-1")));
+        let remote_body = serde_json::json!({
+            "id": "thread-1",
+            "updated_at": "2026-05-01T00:00:00Z",
+            "summary": "Old title",
+        });
+        fs::write(&remote_path, serde_json::to_vec(&remote_body).unwrap()).unwrap();
+
+        let local = sync_item("codex", "thread-1", "2026-05-01T00:00:00Z", "New title");
+        let result = bidirectional_sync(&[local], &folder).unwrap();
+
+        assert_eq!(result.uploaded, 1);
+        assert_eq!(result.skipped, 0);
+        let written = fs::read(&remote_path).unwrap();
+        assert_eq!(extract_summary(&written).as_deref(), Some("New title"));
+
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn same_timestamp_with_same_summary_is_skipped() {
+        let folder = test_folder();
+        let remote_dir = folder.join("conversations").join("codex");
+        fs::create_dir_all(&remote_dir).unwrap();
+        let remote_path = remote_dir.join(format!("{}.json", id_to_filename("thread-1")));
+        let remote_body = serde_json::json!({
+            "id": "thread-1",
+            "updated_at": "2026-05-01T00:00:00Z",
+            "summary": "Same title",
+        });
+        fs::write(&remote_path, serde_json::to_vec(&remote_body).unwrap()).unwrap();
+
+        let local = sync_item("codex", "thread-1", "2026-05-01T00:00:00Z", "Same title");
+        let result = bidirectional_sync(&[local], &folder).unwrap();
+
+        assert_eq!(result.uploaded, 0);
+        assert_eq!(result.skipped, 1);
+        let written = fs::read(&remote_path).unwrap();
+        assert_eq!(extract_summary(&written).as_deref(), Some("Same title"));
+
+        let _ = fs::remove_dir_all(&folder);
     }
 }
