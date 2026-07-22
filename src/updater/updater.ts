@@ -76,6 +76,14 @@ export async function installAvailableUpdate(version: string) {
     }
   }
 
+  // Tauri v1 only arms its `tauri://update-install` listener after a
+  // successful updater-side check, so the install event must be preceded by
+  // checkUpdate() here — the custom GitHub check above does not arm it.
+  const update = await checkUpdate();
+  if (!update.shouldUpdate) {
+    return { kind: "up-to-date" } as const;
+  }
+
   await installUpdate();
   await relaunch();
 
