@@ -148,7 +148,7 @@ The main source selector must be driven by runtime availability:
 
 1. Native layer returns status for supported sources: Claude, Codex, Gemini, Antigravity, OpenCode, ZCode, Hermes, Kimi Code.
 2. Frontend filters to `available == true`.
-3. Show `Kimi Code` only when `%USERPROFILE%\.kimi-code\sessions` (or `%KIMI_CODE_HOME%\sessions`) exists and contains readable session data.
+3. Show `Kimi Code` only when `%USERPROFILE%\.kimi-code\sessions` (or `%KIMI_CODE_HOME%\sessions`) contains a parsed conversation with at least one real user message. Ignore bootstrap sessions that contain only `metadata`, `config.update`, or `tools.set_active_tools` events.
 4. Settings -> Agent integration can still show Kimi Code as installable even when the main source selector hides it.
 
 ## Kimi Code Local History Adapter
@@ -207,6 +207,8 @@ Expected result:
 - `project_dir` equals the `state.json` `workDir` value
 - the tool call output is backfilled from `tool.result`
 - `file_changes[0].path` equals the absolute file path
+
+Also cover a bootstrap-only session with no `turn.prompt` event. It must not make the Kimi Code source available and must not appear in `list_conversations()`.
 
 Run at minimum:
 

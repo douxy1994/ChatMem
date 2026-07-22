@@ -591,7 +591,7 @@ fn normalize_project_dir(project_dir: &str) -> String {
     strip_file_like_leaf(&normalized)
 }
 
-fn summary_matches_query(summary: &ConversationSummary, query: &str) -> bool {
+fn summary_response_matches_query(summary: &ConversationSummaryResponse, query: &str) -> bool {
     contains_query(&summary.id, query)
         || contains_query(&summary.project_dir, query)
         || summary
@@ -640,6 +640,77 @@ fn conversation_matches_query(conversation: &Conversation, query: &str) -> bool 
                     .unwrap_or(false)
         })
     })
+}
+
+fn read_conversation_from_sources(agent: &str, id: &str) -> Result<Conversation, String> {
+    let adapter = get_adapter(agent)?;
+    let source_agent = adapter.agent_kind();
+
+    if let Ok(mut conversation) = adapter.read_conversation(id) {
+        conversation.project_dir = normalize_project_dir(&conversation.project_dir);
+        return Ok(conversation);
+    }
+
+    let sync_folder = read_app_settings_from_disk()
+        .ok()
+        .flatten()
+        .map(|settings| settings.sync.sync_folder)
+        .unwrap_or_default();
+    if !sync_folder.is_empty() {
+        let safe_name = local_sync::id_to_filename(id);
+        let file_path = PathBuf::from(&sync_folder)
+            .join("conversations")
+            .join(agent)
+            .join(format!("{safe_name}.json"));
+        if let Ok(body) = fs::read(&file_path) {
+            if let Ok(mut conversation) = serde_json::from_slice::<Conversation>(&body) {
+                conversation.project_dir = normalize_project_dir(&conversation.project_dir);
+                return Ok(conversation);
+            }
+        }
+    }
+
+    if let Ok(store) = open_memory_store() {
+        if let Ok(Some((repo_root, summary, started_at, updated_at, messages))) =
+            store.read_store_conversation(agent, id)
+        {
+            let parse_timestamp = |value: &str| {
+                chrono::DateTime::parse_from_rfc3339(value)
+                    .map(|timestamp| timestamp.with_timezone(&chrono::Utc))
+                    .unwrap_or_else(|_| chrono::Utc::now())
+            };
+            let messages = messages
+                .into_iter()
+                .map(|(role, content, timestamp)| Message {
+                    id: uuid::Uuid::new_v4(),
+                    timestamp: parse_timestamp(&timestamp),
+                    role: match role.as_str() {
+                        "assistant" => agentswap_core::types::Role::Assistant,
+                        "system" => agentswap_core::types::Role::System,
+                        _ => agentswap_core::types::Role::User,
+                    },
+                    content,
+                    tool_calls: vec![],
+                    metadata: std::collections::HashMap::new(),
+                })
+                .collect();
+
+            return Ok(Conversation {
+                id: id.to_string(),
+                source_agent,
+                project_dir: normalize_project_dir(&repo_root),
+                created_at: parse_timestamp(&started_at),
+                updated_at: parse_timestamp(&updated_at),
+                summary,
+                messages,
+                file_changes: vec![],
+            });
+        }
+    }
+
+    Err(format!(
+        "Conversation {id} not found in local storage, sync folder, or memory store"
+    ))
 }
 
 fn meaningful_message_count(conversation: &Conversation) -> usize {
@@ -1870,29 +1941,23 @@ async fn search_conversations(
         return list_conversations(agent).await;
     }
 
-    let adapter = get_adapter(&agent)?;
-
-    if !adapter.is_available() {
-        return Ok(vec![]);
-    }
-
     let normalized_query = trimmed_query.to_lowercase();
-    let summaries = adapter.list_conversations().map_err(|e| e.to_string())?;
+    let summaries = list_conversations(agent.clone()).await?;
 
     let mut matches = Vec::new();
 
     for summary in summaries {
-        if summary_matches_query(&summary, &normalized_query) {
-            matches.push(convert_summary(summary));
+        if summary_response_matches_query(&summary, &normalized_query) {
+            matches.push(summary);
             continue;
         }
 
-        let conversation = adapter
-            .read_conversation(&summary.id)
-            .map_err(|e| e.to_string())?;
+        let Ok(conversation) = read_conversation_from_sources(&agent, &summary.id) else {
+            continue;
+        };
 
         if conversation_matches_query(&conversation, &normalized_query) {
-            matches.push(convert_summary(summary));
+            matches.push(summary);
         }
     }
 
@@ -1901,42 +1966,7 @@ async fn search_conversations(
 
 #[command]
 async fn read_conversation(agent: String, id: String) -> Result<ConversationResponse, String> {
-    let adapter = get_adapter(&agent)?;
-
-    // Try adapter first (local native storage)
-    let conversation = match adapter.read_conversation(&id) {
-        Ok(mut conv) => {
-            conv.project_dir = normalize_project_dir(&conv.project_dir);
-            conv
-        }
-        Err(_) => {
-            // Adapter doesn't have it — try reading from the sync folder
-            let settings = read_app_settings_from_disk()?;
-            let sync_folder = settings
-                .as_ref()
-                .map(|s| s.sync.sync_folder.clone())
-                .unwrap_or_default();
-            if sync_folder.is_empty() {
-                return Err(format!(
-                    "Conversation {id} not found in local storage or sync folder"
-                ));
-            }
-            let safe_name = local_sync::id_to_filename(&id);
-            let file_path = std::path::PathBuf::from(&sync_folder)
-                .join("conversations")
-                .join(&agent)
-                .join(format!("{safe_name}.json"));
-            if !file_path.exists() {
-                return Err(format!(
-                    "Conversation {id} not found in local storage or sync folder"
-                ));
-            }
-            let body = std::fs::read(&file_path)
-                .map_err(|e| format!("Failed to read synced conversation: {e}"))?;
-            serde_json::from_slice::<Conversation>(&body)
-                .map_err(|e| format!("Failed to parse synced conversation: {e}"))?
-        }
-    };
+    let conversation = read_conversation_from_sources(&agent, &id)?;
 
     let storage_path = resolve_storage_path(&agent, &id);
     let resume_command = build_resume_command(&agent, &id);
@@ -2936,7 +2966,8 @@ mod tests {
     use super::{
         build_migration_verification, build_resume_command, build_webdav_probe_url,
         build_webdav_remote_collection_url, conversation_matches_query,
-        is_stale_local_conversation_error, normalize_project_dir, AgentKind, Conversation,
+        is_stale_local_conversation_error, normalize_project_dir, summary_response_matches_query,
+        AgentKind, Conversation, ConversationSummaryResponse,
     };
     use agentswap_core::types::{ChangeType, FileChange, Message, Role, ToolCall, ToolStatus};
     use chrono::Utc;
@@ -3201,6 +3232,26 @@ mod tests {
         };
 
         assert!(conversation_matches_query(&conversation, "内存泄漏"));
+    }
+
+    #[test]
+    fn search_matches_synced_summary_fields_without_native_adapter_data() {
+        let summary = ConversationSummaryResponse {
+            id: "remote-001".to_string(),
+            source_agent: "kimi".to_string(),
+            project_dir: "D:/VSP/search-fallback".to_string(),
+            created_at: "2026-07-22T00:00:00Z".to_string(),
+            updated_at: "2026-07-22T01:00:00Z".to_string(),
+            summary: Some("Windows search recovery".to_string()),
+            message_count: 3,
+            file_count: 0,
+        };
+
+        assert!(summary_response_matches_query(&summary, "search recovery"));
+        assert!(summary_response_matches_query(
+            &summary,
+            "d:/vsp/search-fallback"
+        ));
     }
 
     #[test]

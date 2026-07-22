@@ -1,11 +1,11 @@
 # ChatMem
 
-## v1.3.3 Release Status
+## v1.3.5 Release Status
 
-- The `v1.3.3` GitHub Release adds native Kimi Code support (MCP, skill, global guidance, and local-history reading) on top of the v1.3.x workbench.
-- macOS Apple Silicon DMG ships first. Windows developers should use the parity guide below to ship the matching Windows build.
-- In-app update checks read the latest GitHub Release tag directly. If a newer release includes a Windows installer, ChatMem downloads and launches it. If the installed version already matches the latest release, ChatMem reports that it is up to date.
-- Full release notes: [`docs/releases/v1.3.3.md`](./docs/releases/v1.3.3.md).
+- The shared `v1.3.5` GitHub Release provides matching macOS and Windows packages with in-app update support.
+- Native Kimi Code support includes MCP, skill, global guidance, and local-history reading on both platforms.
+- Windows search covers native Agent history, synced snapshots, and the ChatMem memory store. Only the newest in-flight query may update the result list.
+- Full release notes: [`docs/releases/v1.3.5.md`](./docs/releases/v1.3.5.md).
 
 ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、Codex、Gemini、OpenCode、ZCode、Hermes、Kimi Code 等本地对话历史整理成可搜索、可恢复、可迁移、可继续使用的项目上下文。
 
@@ -13,7 +13,15 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 
 ## 当前版本
 
-最新版本：`v1.3.3`
+最新版本：`v1.3.5`
+
+### v1.3.5 重点更新
+
+**双端更新与 Windows 对齐**
+- macOS 与 Windows 安装包合并到同一个 Release；Windows 可直接下载并静默安装更高版本。
+- Windows 端完整支持 Kimi Code MCP、skill、全局规则和本地会话读取；只有包含真实用户消息的会话才会显示为可用来源。
+- Windows 搜索统一覆盖 Agent 原生会话、同步目录和 ChatMem 本地内存库，并避免快速输入时旧请求覆盖新结果。
+- Windows 侧栏底部固定显示收藏夹、垃圾箱和设置三个入口，版本号独立放在右下角。
 
 ### v1.3.3 重点更新
 

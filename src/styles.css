@@ -1693,17 +1693,17 @@ button {
   flex: 1 1 auto;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: center;
   gap: 6px;
 }
 
 .utility-nav-version {
-  flex: 0 0 auto;
+  position: absolute;
+  right: 0;
+  bottom: -10px;
   font-size: 10px;
   color: var(--text-muted);
-  margin-left: auto;
-  padding-left: 2px;
   line-height: normal;
 }
 
@@ -1746,9 +1746,9 @@ button {
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 5px;
-  padding: 3px 7px;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px 4px;
   cursor: pointer;
   transition:
     background var(--transition-base),
@@ -1788,8 +1788,8 @@ button {
 }
 
 .utility-nav-label {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: max-content;
   color: currentColor;
   font-size: 12px;
   overflow: visible;

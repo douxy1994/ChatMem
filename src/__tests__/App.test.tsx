@@ -611,7 +611,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Control Center" })).toBeTruthy();
   });
 
-  it("renders the 1.3.3 version without an About utility entry", async () => {
+  it("renders the 1.3.5 version without an About utility entry", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -619,8 +619,24 @@ describe("App", () => {
 
     renderApp();
 
-    expect((await screen.findAllByText("v1.3.3")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("v1.3.5")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "About us" })).toBeNull();
+  });
+
+  it("opens Settings from the sidebar utility navigation", async () => {
+    localStorage.setItem(
+      "chatmem.settings",
+      JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
+    );
+
+    renderApp();
+
+    const settingsButton = await screen.findByRole("button", { name: "Settings" });
+    expect(screen.getByRole("button", { name: "Favorites" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Trash" })).toBeTruthy();
+    fireEvent.click(settingsButton);
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeTruthy();
   });
 
   it("opens an in-app card before moving one sidebar conversation to trash", async () => {
@@ -2602,6 +2618,79 @@ describe("App", () => {
       });
       expect(screen.getAllByText("Memory investigation").length).toBeGreaterThan(0);
     });
+  });
+
+  it("keeps the newest search results when requests finish out of order", async () => {
+    localStorage.setItem(
+      "chatmem.settings",
+      JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
+    );
+
+    const staleSearch = createDeferred<Array<Record<string, unknown>>>();
+    const latestSearch = createDeferred<Array<Record<string, unknown>>>();
+    const baseInvoke = mockInvoke.getMockImplementation();
+    mockInvoke.mockImplementation((command: string, payload?: Record<string, unknown>) => {
+      if (command === "search_conversations" && payload?.query === "memory") {
+        return staleSearch.promise;
+      }
+      if (command === "search_conversations" && payload?.query === "memory leak") {
+        return latestSearch.promise;
+      }
+      return baseInvoke?.(command, payload);
+    });
+
+    renderApp();
+
+    const input = await screen.findByPlaceholderText("Search conversations...");
+    fireEvent.change(input, { target: { value: "memory" } });
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("search_conversations", {
+        agent: "claude",
+        query: "memory",
+      });
+    });
+
+    fireEvent.change(input, { target: { value: "memory leak" } });
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("search_conversations", {
+        agent: "claude",
+        query: "memory leak",
+      });
+    });
+
+    await act(async () => {
+      latestSearch.resolve([
+        {
+          id: "latest-result",
+          source_agent: "claude",
+          project_dir: "D:/VSP/latest",
+          created_at: "2026-07-22T01:00:00Z",
+          updated_at: "2026-07-22T02:00:00Z",
+          summary: "Latest search result",
+          message_count: 2,
+          file_count: 0,
+        },
+      ]);
+    });
+    expect((await screen.findAllByText("Latest search result")).length).toBeGreaterThan(0);
+
+    await act(async () => {
+      staleSearch.resolve([
+        {
+          id: "stale-result",
+          source_agent: "claude",
+          project_dir: "D:/VSP/stale",
+          created_at: "2026-07-22T00:00:00Z",
+          updated_at: "2026-07-22T00:30:00Z",
+          summary: "Stale search result",
+          message_count: 1,
+          file_count: 0,
+        },
+      ]);
+    });
+
+    expect(screen.queryByText("Stale search result")).toBeNull();
+    expect(screen.getAllByText("Latest search result").length).toBeGreaterThan(0);
   });
 
   it("keeps migration working from the selected conversation detail", async () => {

@@ -1678,6 +1678,7 @@ function App() {
   const repoScanRequestIdRef = useRef(0);
   const repoScanActiveCountRef = useRef(0);
   const conversationDetailCacheRef = useRef<Record<string, Conversation>>({});
+  const conversationListRequestIdRef = useRef(0);
   const conversationDetailRequestIdRef = useRef(0);
   const autoCaptureInFlightRef = useRef<string | null>(null);
   const lastAutoCaptureKeyRef = useRef<string | null>(null);
@@ -2208,20 +2209,35 @@ function App() {
   );
 
   const loadConversations = async (query = searchQuery, agent = selectedAgent) => {
+    const requestId = ++conversationListRequestIdRef.current;
+    const trimmedQuery = query.trim();
     setListLoading(true);
     try {
-      const trimmedQuery = query.trim();
       const result = trimmedQuery
         ? await invoke<ConversationSummary[]>("search_conversations", {
             agent,
             query: trimmedQuery,
           })
         : await invoke<ConversationSummary[]>("list_conversations", { agent });
+      if (requestId !== conversationListRequestIdRef.current) {
+        return;
+      }
       setConversations(result.map(normalizeConversationProject));
     } catch (error) {
-      console.error("Failed to load conversations:", error);
+      if (requestId === conversationListRequestIdRef.current) {
+        console.error("Failed to load conversations:", error);
+        setConversations([]);
+        if (trimmedQuery) {
+          setAppNotice({
+            kind: "error",
+            message: locale === "en" ? "Search failed. Please try again." : "搜索失败，请重试。",
+          });
+        }
+      }
     } finally {
-      setListLoading(false);
+      if (requestId === conversationListRequestIdRef.current) {
+        setListLoading(false);
+      }
     }
   };
 
@@ -3822,11 +3838,11 @@ function App() {
       {
         label: locale === "en" ? "Version" : "版本号",
         value: `v${packageInfo.version}`,
-        ok: packageInfo.version === "1.3.3",
+        ok: packageInfo.version === "1.3.5",
       },
       {
         label: locale === "en" ? "Release notes" : "发布说明",
-        value: "docs/releases/v1.3.3.md",
+        value: "docs/releases/v1.3.5.md",
         ok: true,
       },
       {
@@ -6916,6 +6932,21 @@ function App() {
                 {trashedConversations.length > 0 ? (
                   <span className="utility-nav-count">{trashedConversations.length}</span>
                 ) : null}
+              </button>
+
+              <button
+                type="button"
+                className={`utility-nav-button ${showSettings ? "active" : ""}`}
+                aria-label={shell.settings}
+                onClick={() => {
+                  setShowFavorites(false);
+                  setShowTrash(false);
+                  setShowAbout(false);
+                  setShowSettings(true);
+                }}
+              >
+                <WindowButtonIcon type="settings" />
+                <span className="utility-nav-label">{shell.settings}</span>
               </button>
             </div>
             <span className="utility-nav-version">v{packageInfo.version}</span>

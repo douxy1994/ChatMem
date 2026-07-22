@@ -450,7 +450,9 @@ impl KimiCodeAdapter {
 
 impl AgentAdapter for KimiCodeAdapter {
     fn is_available(&self) -> bool {
-        self.sessions_dir().exists()
+        self.list_conversations()
+            .map(|summaries| !summaries.is_empty())
+            .unwrap_or(false)
     }
 
     fn list_conversations(&self) -> Result<Vec<ConversationSummary>> {
@@ -479,6 +481,13 @@ impl AgentAdapter for KimiCodeAdapter {
                 }
                 let id = session.file_name().to_string_lossy().to_string();
                 if let Ok(conv) = self.read_conversation(&id) {
+                    if !conv
+                        .messages
+                        .iter()
+                        .any(|message| message.role == Role::User)
+                    {
+                        continue;
+                    }
                     summaries.push(ConversationSummary {
                         id: conv.id,
                         source_agent: conv.source_agent,
@@ -749,6 +758,28 @@ mod tests {
         assert!(!adapter.is_available());
         assert!(adapter.list_conversations().expect("list").is_empty());
         assert!(adapter.read_conversation("session_none").is_err());
+    }
+
+    #[test]
+    fn test_kimi_ignores_session_without_user_messages() {
+        let tmp = TempDir::new().expect("temp dir");
+        let home = tmp.path().join("kimi-home");
+        let session_dir = create_test_session(&home, "wd_proj_0123456789ab", "session_config-only");
+        write_file(
+            &session_dir.join("state.json"),
+            r#"{"createdAt":"2026-07-21T10:33:38.534Z","updatedAt":"2026-07-21T10:33:38.534Z","title":"New session","workDir":"C:\\Users\\test\\project"}"#,
+        );
+        write_file(
+            &session_dir.join("agents").join("main").join("wire.jsonl"),
+            r#"{"type":"metadata","protocol_version":"1.4","created_at":1784359436181}
+{"type":"config.update","profileName":"agent","systemPrompt":"You are Kimi Code CLI.","time":1784359436182}
+{"type":"tools.set_active_tools","names":["Shell"],"time":1784359436183}
+"#,
+        );
+
+        let adapter = KimiCodeAdapter::with_home_dir(home);
+        assert!(!adapter.is_available());
+        assert!(adapter.list_conversations().expect("list").is_empty());
     }
 
     #[test]
