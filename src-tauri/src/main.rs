@@ -2847,6 +2847,13 @@ fn main() {
     let system_tray = tauri::SystemTray::new().with_menu(tray_menu);
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .system_tray(system_tray)
         .menu(build_app_menu())
         .on_menu_event(|event| {

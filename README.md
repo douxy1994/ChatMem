@@ -1,11 +1,12 @@
 # ChatMem
 
-## v1.3.5 Release Status
+## v1.3.6 Release Status
 
-- The shared `v1.3.5` GitHub Release provides matching macOS and Windows packages with in-app update support.
-- Native Kimi Code support includes MCP, skill, global guidance, and local-history reading on both platforms.
-- Windows search covers native Agent history, synced snapshots, and the ChatMem memory store. Only the newest in-flight query may update the result list.
-- Full release notes: [`docs/releases/v1.3.5.md`](./docs/releases/v1.3.5.md).
+- The Windows desktop now enforces a single GUI instance. Launching ChatMem again restores and focuses the existing window instead of creating another taskbar process.
+- Closing the main window still hides ChatMem to the system tray, and launching the shortcut restores the same process.
+- Agent integrations remain independent: `ChatMem.exe --mcp` continues to provide a dedicated stdio process for each connected client.
+- The shared `v1.3.6` GitHub Release provides Windows, macOS, portable, and signed updater packages from the same tag.
+- Full release notes: [`docs/releases/v1.3.6.md`](./docs/releases/v1.3.6.md).
 
 ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、Codex、Gemini、OpenCode、ZCode、Hermes、Kimi Code 等本地对话历史整理成可搜索、可恢复、可迁移、可继续使用的项目上下文。
 
@@ -13,7 +14,15 @@ ChatMem 是一个本地优先的 AI 编程记忆与迁移层。它把 Claude、C
 
 ## 当前版本
 
-最新版本：`v1.3.5`
+最新版本：`v1.3.6`
+
+### v1.3.6 重点更新
+
+**Windows 单实例修复**
+- ChatMem 桌面 GUI 在同一用户会话中只允许一个实例运行，重复双击桌面图标不会再创建新的任务栏窗口或后台 GUI 进程。
+- 再次启动会显示、取消最小化并聚焦已经运行的主窗口；关闭到系统托盘后，也会恢复同一个进程。
+- Agent 集成使用的 `ChatMem.exe --mcp` 在单实例锁之前进入 MCP stdio 模式，不会因为桌面端修复而失效。
+- Release 说明见 `docs/releases/v1.3.6.md`。
 
 ### v1.3.5 重点更新
 

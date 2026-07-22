@@ -15,6 +15,8 @@ const tauriConfig = JSON.parse(
   readFileSync(resolve(process.cwd(), "src-tauri/tauri.conf.json"), "utf8"),
 );
 const appStyles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+const tauriCargo = readFileSync(resolve(process.cwd(), "src-tauri/Cargo.toml"), "utf8");
+const tauriMain = readFileSync(resolve(process.cwd(), "src-tauri/src/main.rs"), "utf8");
 
 describe("chatmem integration manifests", () => {
   it("defines a local MCP server entry for chatmem", () => {
@@ -76,6 +78,23 @@ describe("chatmem integration manifests", () => {
     expect(tauriConfig.tauri.windows[0].decorations).toBe(true);
     expect(tauriConfig.tauri.windows[0].transparent).toBe(false);
     expect(tauriConfig.tauri.allowlist.window?.all).toBe(true);
+  });
+
+  it("runs one desktop instance while keeping MCP stdio processes independent", () => {
+    expect(tauriCargo).toContain("tauri-plugin-single-instance");
+
+    const mcpBranch = tauriMain.indexOf('args.iter().any(|arg| arg == "--mcp")');
+    const singleInstancePlugin = tauriMain.indexOf(
+      ".plugin(tauri_plugin_single_instance::init",
+    );
+    const systemTray = tauriMain.indexOf(".system_tray(system_tray)");
+
+    expect(mcpBranch).toBeGreaterThan(-1);
+    expect(singleInstancePlugin).toBeGreaterThan(mcpBranch);
+    expect(systemTray).toBeGreaterThan(singleInstancePlugin);
+    expect(tauriMain).toContain('app.get_window("main")');
+    expect(tauriMain).toContain("window.unminimize()");
+    expect(tauriMain).toContain("window.set_focus()");
   });
 
   it("keeps the desktop shell fixed while sidebar and workspace scroll independently", () => {

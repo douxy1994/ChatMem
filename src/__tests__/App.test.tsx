@@ -611,7 +611,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Control Center" })).toBeTruthy();
   });
 
-  it("renders the 1.3.5 version without an About utility entry", async () => {
+  it("renders the 1.3.6 version without an About utility entry", async () => {
     localStorage.setItem(
       "chatmem.settings",
       JSON.stringify({ locale: "en", autoCheckUpdates: false, autoCaptureMemory: false }),
@@ -619,7 +619,7 @@ describe("App", () => {
 
     renderApp();
 
-    expect((await screen.findAllByText("v1.3.5")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("v1.3.6")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "About us" })).toBeNull();
   });
 

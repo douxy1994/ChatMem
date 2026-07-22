@@ -3838,11 +3838,11 @@ function App() {
       {
         label: locale === "en" ? "Version" : "版本号",
         value: `v${packageInfo.version}`,
-        ok: packageInfo.version === "1.3.5",
+        ok: packageInfo.version === "1.3.6",
       },
       {
         label: locale === "en" ? "Release notes" : "发布说明",
-        value: "docs/releases/v1.3.5.md",
+        value: "docs/releases/v1.3.6.md",
         ok: true,
       },
       {
